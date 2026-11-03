@@ -7,10 +7,6 @@ import { findPath } from './pathing';
 import { Player } from './Player';
 import { Station } from './Station';
 
-const ZOOM_SMALL = 2;
-const ZOOM_MEDIUM = 3;
-const ZOOM_LARGE = 4;
-
 export class LabScene extends Phaser.Scene {
   private parsed!: ParsedMap;
   private stations: Station[] = [];
@@ -25,6 +21,8 @@ export class LabScene extends Phaser.Scene {
   private interactKey?: Phaser.Input.Keyboard.Key;
   private lastPrompt: StationId | null = null;
   private objectiveStation: StationId | null = null;
+  private zoneLabels: Phaser.GameObjects.Text[] = [];
+  private npcLabel?: Phaser.GameObjects.Text;
   private unsubscribeEngine?: () => void;
   private unsubs: (() => void)[] = [];
   private keyHandler?: (ev: KeyboardEvent) => void;
@@ -40,6 +38,8 @@ export class LabScene extends Phaser.Scene {
     this.lastPrompt = null;
     this.objectiveStation = null;
     this.parsed = parseMap();
+    this.zoneLabels = [];
+    this.npcLabel = undefined;
     this.engine = this.registry.get('engine') as ShiftEngine | undefined;
 
     this.cameras.main.setBackgroundColor('#0b1220');
@@ -127,10 +127,10 @@ export class LabScene extends Phaser.Scene {
 
   private buildLabels(): void {
     const label = (x: number, y: number, text: string): void => {
-      this.add
+      const node = this.add
         .text(x, y, text, {
           fontFamily: '"Kenney Pixel"',
-          fontSize: '8px',
+          fontSize: '10px',
           color: '#5eead4',
           backgroundColor: '#0b1220',
           padding: { x: 2, y: 1 },
@@ -138,6 +138,7 @@ export class LabScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setResolution(4)
         .setDepth(10000);
+      this.zoneLabels.push(node);
     };
     label(2 * TILE + TILE, 2 * TILE - 2, 'RECEIVING');
     label(10 * TILE + TILE, 2 * TILE - 2, 'QC');
@@ -151,10 +152,10 @@ export class LabScene extends Phaser.Scene {
     const x = 5 * TILE + TILE / 2;
     const y = 12 * TILE + TILE;
     this.add.sprite(x, y, 'cls-down').setOrigin(0.5, 1).setDisplaySize(TILE, TILE).setDepth(y);
-    this.add
+    this.npcLabel = this.add
       .text(x, y - TILE - 2, 'Nguyen, CLS', {
         fontFamily: '"Kenney Pixel"',
-        fontSize: '7px',
+        fontSize: '9px',
         color: '#ffd9e2',
         backgroundColor: '#132238',
         padding: { x: 2, y: 1 },
@@ -166,22 +167,35 @@ export class LabScene extends Phaser.Scene {
 
   // ----------------------------------------------------------------- camera
 
+  /** Show the whole lab: every station stays visible on phone and desktop. */
   private setupCamera(): void {
-    const cam = this.cameras.main;
-    cam.setBounds(0, 0, MAP_COLS * TILE, MAP_ROWS_COUNT * TILE);
-    cam.startFollow(this.player.container, true, 0.12, 0.12);
-    cam.setRoundPixels(true);
-    cam.setZoom(this.zoomForWidth(this.scale.width));
+    this.cameras.main.setRoundPixels(true);
+    this.applyCameraMode();
   }
 
-  private zoomForWidth(width: number): number {
-    if (width >= 1600) return ZOOM_LARGE;
-    if (width >= 900) return ZOOM_MEDIUM;
-    return ZOOM_SMALL;
+  private applyCameraMode(): void {
+    const cam = this.cameras.main;
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const mapW = MAP_COLS * TILE;
+    const mapH = MAP_ROWS_COUNT * TILE;
+    const hud = document.querySelector<HTMLElement>('.hud');
+    const hudHeight = (hud?.offsetHeight ?? 46) + 4;
+    const available = Math.max(160, height - hudHeight);
+    const zoom = Math.min(width / mapW, available / mapH);
+    cam.stopFollow();
+    cam.setZoom(zoom);
+    cam.centerOn(mapW / 2, mapH / 2);
+    // Push the map down so the HUD never covers the top station row.
+    const mapTop = (height - mapH * zoom) / 2;
+    cam.scrollY -= (hudHeight - mapTop) / zoom;
+    const labelSize = Math.max(6, Math.min(14, Math.round((14 / zoom) * 10) / 10));
+    for (const label of this.zoneLabels) label.setFontSize(labelSize);
+    this.npcLabel?.setFontSize(Math.max(6, Math.min(12, Math.round((11 / zoom) * 10) / 10)));
   }
 
   private onResize(): void {
-    this.cameras.main.setZoom(this.zoomForWidth(this.scale.width));
+    this.applyCameraMode();
   }
 
   // ------------------------------------------------------------------ input

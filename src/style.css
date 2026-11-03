@@ -647,3 +647,21 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--teal-soft); out
   color: var(--teal-soft); z-index: 45; animation: print-slide 1.3s ease-out forwards;
 }
 @keyframes print-slide { from { opacity: 0; transform: translate(-50%, 14px); } 15% { opacity: 1; } 85% { opacity: 1; } to { opacity: 0; transform: translate(-50%, -10px); } }
+
+/* Short landscape screens (phones): whole lab visible, tighter dialogs and controls. */
+@media (max-height: 560px) {
+  .modal { max-height: 94dvh; }
+  .modal-head { padding: 6px 8px; }
+  .modal-body { padding: 8px 10px; line-height: 1.45; }
+  .modal-body p { margin-bottom: 6px; line-height: 1.45; }
+  .modal-body h3 { margin: 10px 0 6px; }
+  .status-row { padding: 5px 0; }
+  .modal-foot { padding: 8px; }
+  .modal-foot button { padding: 8px 12px; }
+  .order-card, .tray { display: none; }
+  .joystick { width: 88px; height: 88px; left: calc(12px + env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .joystick-knob { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
+  .interact-wrap { right: calc(14px + env(safe-area-inset-right)); bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .interact-btn { width: 60px; height: 60px; min-height: 60px; font-size: 18px; }
+  .prompt-chip { bottom: calc(86px + env(safe-area-inset-bottom)); }
+}
