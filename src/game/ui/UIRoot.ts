@@ -120,8 +120,6 @@ export class UIRoot {
   private modalStack: { id: number; node: HTMLElement; dismissible: boolean; onClose?: () => void }[] = [];
   private toastTimer: number | null = null;
   private lab: LabDom | null = null;
-  private joystickPointer: number | null = null;
-  private joystickCenter = { x: 0, y: 0 };
   private engine: ShiftEngine;
   private unsubscribeEngine?: () => void;
   private uiPaused = false;
@@ -291,20 +289,9 @@ export class UIRoot {
     hud.append(tag, chip, right);
 
     const orderCard = el('div', 'order-card hidden');
-    const joystick = el('div', 'joystick');
-    joystick.setAttribute('aria-label', 'Movement joystick');
-    const knob = el('div', 'joystick-knob');
-    joystick.append(knob);
-
-    const wrap = el('div', 'interact-wrap');
-    const interactLabel = el('div', 'interact-label', 'STATION');
-    const interactBtn = button('A', 'interact-btn', () => bus.emit('input:interact'), { ariaLabel: 'Interact with the nearest station' });
-    wrap.append(interactLabel, interactBtn);
-
-    const prompt = el('div', 'prompt-chip hidden');
     const tray = el('div', 'tray');
 
-    this.screenHost.append(hud, orderCard, joystick, wrap, prompt, tray);
+    this.screenHost.append(hud, orderCard, tray);
     this.lab = {
       hud,
       tag,
@@ -313,52 +300,15 @@ export class UIRoot {
       chips: { acc: acc.value, tat: tat.value, int: integrity.value },
       orderCard,
       tray,
-      prompt,
-      joystick,
-      knob,
-      interactLabel,
+      prompt: document.createElement('div'),
+      joystick: document.createElement('div'),
+      knob: document.createElement('div'),
+      interactLabel: document.createElement('div'),
     };
-    this.bindJoystick(joystick, knob);
     this.setPrompt(null);
     this.screenHost.style.setProperty('--hud-h', `${hud.offsetHeight || 46}px`);
     this.onSnapshot(this.engine.getSnapshot());
     this.tatTimer = window.setInterval(() => this.updateTat(), 500);
-  }
-
-  private bindJoystick(base: HTMLElement, knob: HTMLElement): void {
-    const reset = (): void => {
-      this.joystickPointer = null;
-      knob.style.transform = '';
-      bus.emit('input:joystick', { x: 0, y: 0 });
-    };
-    const move = (ev: PointerEvent): void => {
-      const dx = ev.clientX - this.joystickCenter.x;
-      const dy = ev.clientY - this.joystickCenter.y;
-      const radius = 40;
-      const len = Math.hypot(dx, dy) || 1;
-      const scale = Math.min(1, radius / len);
-      const cx = dx * scale;
-      const cy = dy * scale;
-      knob.style.transform = `translate(${cx}px, ${cy}px)`;
-      bus.emit('input:joystick', { x: cx / radius, y: cy / radius });
-    };
-    base.addEventListener('pointerdown', (ev) => {
-      ev.preventDefault();
-      const rect = base.getBoundingClientRect();
-      this.joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      this.joystickPointer = ev.pointerId;
-      base.setPointerCapture(ev.pointerId);
-      move(ev);
-    });
-    base.addEventListener('pointermove', (ev) => {
-      if (ev.pointerId !== this.joystickPointer) return;
-      move(ev);
-    });
-    base.addEventListener('pointerup', (ev) => {
-      if (ev.pointerId !== this.joystickPointer) return;
-      reset();
-    });
-    base.addEventListener('pointercancel', reset);
   }
 
   private setPrompt(label: string | null): void {

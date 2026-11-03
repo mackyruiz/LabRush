@@ -106,8 +106,7 @@ if (import.meta.env.DEV || import.meta.env.VITE_E2E === '1') {
   };
 }
 
-// Rotate prompt + tab visibility: both pause the scene and the shift timer.
-const rotate = document.getElementById('rotate') as HTMLElement;
+// Tab visibility: pause/resume when hidden.
 let envPaused = false;
 
 function setEnvPaused(paused: boolean): void {
@@ -123,14 +122,10 @@ function setEnvPaused(paused: boolean): void {
   }
 }
 
-function updateRotate(): void {
-  const portrait = window.matchMedia('(orientation: portrait)').matches && window.innerWidth < 900;
-  rotate.hidden = !portrait;
-  setEnvPaused(portrait || document.visibilityState === 'hidden');
+function updateVisibility(): void {
+  setEnvPaused(document.visibilityState === 'hidden');
 }
-window.addEventListener('resize', updateRotate);
-window.matchMedia('(orientation: portrait)').addEventListener('change', updateRotate);
-document.addEventListener('visibilitychange', updateRotate);
-updateRotate();
+document.addEventListener('visibilitychange', updateVisibility);
+updateVisibility();
 
 document.getElementById('boot-error-reload')?.addEventListener('click', () => window.location.reload());

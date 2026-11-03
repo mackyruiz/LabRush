@@ -2,8 +2,7 @@ import Phaser from 'phaser';
 import { bus } from '../bus';
 import type { ShiftEngine } from '../state/ShiftEngine';
 import type { Objective, StationId } from '../types';
-import { MAP_COLS, MAP_ROWS_COUNT, SPAWN, TILE, parseMap, stationAt, tileKey, type ParsedMap } from './map';
-import { findPath } from './pathing';
+import { MAP_COLS, MAP_ROWS_COUNT, SPAWN, TILE, parseMap, stationAt, type ParsedMap } from './map';
 import { Player } from './Player';
 import { Station } from './Station';
 
@@ -12,35 +11,20 @@ export class LabScene extends Phaser.Scene {
   private stations: Station[] = [];
   private player!: Player;
   private engine?: ShiftEngine;
-
-  private path: { x: number; y: number }[] = [];
-  private pendingStation: StationId | null = null;
-  private joy = { x: 0, y: 0 };
-  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-  private interactKey?: Phaser.Input.Keyboard.Key;
-  private lastPrompt: StationId | null = null;
   private objectiveStation: StationId | null = null;
-  private minimapGfx?: Phaser.GameObjects.Graphics;
-  private lastMmTile = { x: -1, y: -1 };
-  private lastMmObjective: StationId | null = null;
-
   private unsubscribeEngine?: () => void;
   private unsubs: (() => void)[] = [];
   private keyHandler?: (ev: KeyboardEvent) => void;
+  private lastPrompt: StationId | null = null;
 
   constructor() {
     super('LabScene');
   }
 
   create(): void {
-    this.path = [];
-    this.pendingStation = null;
-    this.joy = { x: 0, y: 0 };
-    this.lastPrompt = null;
     this.objectiveStation = null;
+    this.lastPrompt = null;
     this.parsed = parseMap();
-    this.minimapLabel = undefined;
     this.engine = this.registry.get('engine') as ShiftEngine | undefined;
 
     this.cameras.main.setBackgroundColor('#0b1220');
@@ -53,43 +37,22 @@ export class LabScene extends Phaser.Scene {
 
     this.player = new Player(this, SPAWN.x, SPAWN.y);
     this.setupCamera();
-
-    this.cursors = this.input.keyboard?.createCursorKeys();
-    this.wasd = this.input.keyboard?.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.W,
-      down: Phaser.Input.Keyboard.KeyCodes.S,
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D,
-    }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
-    this.interactKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    this.setupKeyboardShortcuts();
     this.setupPointer();
-
-    this.unsubs.push(
-      bus.on('input:joystick', (v: { x: number; y: number }) => {
-        this.joy = v;
-      }),
-      bus.on('input:interact', () => this.interactNearest()),
-      bus.on('lab:walk-to', (id: StationId) => this.walkToStation(id)),
-    );
+    this.setupKeyboardShortcuts();
 
     if (this.engine) {
       this.unsubscribeEngine = this.engine.subscribe((snapshot) => {
         this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
         bus.emit('lab:objective', snapshot.objective as Objective);
-        this.lastMmObjective = null; // force minimap redraw
       });
       const snapshot = this.engine.getSnapshot();
       this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
       bus.emit('lab:objective', snapshot.objective);
-      this.lastMmObjective = null;
       bus.emit('lab:snapshot', snapshot);
     }
 
     this.scale.on(Phaser.Scale.Events.RESIZE, this.onResize, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown, this);
-    this.drawMinimap();
-    this.updatePrompt();
   }
 
   // ------------------------------------------------------------- rendering
@@ -127,6 +90,7 @@ export class LabScene extends Phaser.Scene {
     this.add
       .image(x * TILE + TILE / 2, (MAP_ROWS_COUNT - 1) * TILE + TILE / 2, 'tiles', 255)
       .setDepth((MAP_ROWS_COUNT - 1) * TILE + TILE);
+    void row;
   }
 
   private buildLabels(): void {
@@ -142,7 +106,6 @@ export class LabScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setResolution(4)
         .setDepth(10000);
-      // zone label
     };
     label(2 * TILE + TILE, 2 * TILE - 2, 'RECEIVING');
     label(2 * TILE + TILE, 5 * TILE - 6, 'ACCESSION');
@@ -172,114 +135,35 @@ export class LabScene extends Phaser.Scene {
 
   // ----------------------------------------------------------------- camera
 
-  /** Standard follow camera: pixels stay sharp so characters are readable. */
   private setupCamera(): void {
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, MAP_COLS * TILE, MAP_ROWS_COUNT * TILE);
-    cam.startFollow(this.player.container, true, 0.12, 0.12);
     cam.setRoundPixels(true);
-    cam.setZoom(this.zoomFor(this.scale.width));
-    this.createMinimap();
+    this.applyCameraMode();
   }
 
-  private zoomFor(width: number): number {
-    if (width >= 1600) return 4;
-    if (width >= 1280) return 3;
-    return 2;
+  private applyCameraMode(): void {
+    const cam = this.cameras.main;
+    const width = this.scale.width;
+    const mapW = MAP_COLS * TILE;
+    const zoom = width < 900 ? Math.max(0.85, Math.min(1.2, width / mapW)) : Math.min(width / mapW, 2.5);
+    cam.setZoom(zoom);
+    const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
+    const hudBottom = hudRect?.bottom ?? 56;
+    const mapH = MAP_ROWS_COUNT * TILE * zoom;
+    const available = this.scale.height - hudBottom - 10;
+    const top = hudBottom + Math.max(0, (available - mapH) / 2);
+    const xOffset = (width - mapW * zoom) / 2;
+    cam.setScroll(-xOffset / zoom, -top / zoom);
   }
 
   private onResize(): void {
-    this.cameras.main.setZoom(this.zoomFor(this.scale.width));
+    this.applyCameraMode();
   }
 
-  /** Bottom-right minimap: the whole 26×18 lab, always visible. */
-  private createMinimap(): void {
-    if (this.minimapGfx) return;
-    this.minimapGfx = this.add.graphics().setScrollFactor(0).setDepth(10001);
-    // tiny "MAP" badge
-    const label = this.add.text(0, 0, 'MAP', { fontFamily: '"Kenney Pixel"', fontSize: '8px', color: '#5eead4', backgroundColor: '#0b1220', padding: { x: 3, y: 1 } })
-      .setResolution(2).setDepth(10001).setScrollFactor(0).setOrigin(0, 1);
-    this.minimapLabel = label;
-  }
-
-  private updateMinimapLabel(): void {
-    if (!this.minimapLabel || !this.minimapGfx) return;
-    const w = this.scale.width;
-    const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
-    const mmTop = Math.max(8, (hudRect?.bottom ?? 58) + 6);
-    this.minimapLabel.setPosition(w - 164, mmTop - 2);
-  }
-
-  private minimapLabel?: Phaser.GameObjects.Text;
-
-  private drawMinimap(): void {
-    const gfx = this.minimapGfx;
-    if (!gfx) return;
-    const player = this.player.position();
-    const obj = this.objectiveStation;
-    if (this.lastMmTile.x === player.x && this.lastMmTile.y === player.y && this.lastMmObjective === obj) return;
-    this.lastMmTile = { ...player };
-    this.lastMmObjective = obj;
-    gfx.clear();
-    const w = this.scale.width;
-    const mmW = 156, mmH = 108;
-    this.updateMinimapLabel();
-    const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
-    const mmTop = Math.max(8, (hudRect?.bottom ?? 58) + 6);
-    const x0 = w - mmW - 8;
-    const cw = mmW / MAP_COLS, ch = mmH / MAP_ROWS_COUNT;
-    // background
-    gfx.fillStyle(0x0b1220, 0.88);
-    gfx.fillRect(x0 - 2, (mmTop - 2), mmW + 4, mmH + 4);
-    gfx.lineStyle(2, 0x5eead4, 0.55);
-    gfx.strokeRect(x0 - 2, (mmTop - 2), mmW + 4, mmH + 4);
-    // walkable / walls
-    for (let y = 0; y < MAP_ROWS_COUNT; y++)
-      for (let x = 0; x < MAP_COLS; x++) {
-        if (!this.parsed.walkable[y][x]) {
-          gfx.fillStyle(0x2b4a6f, 0.22);
-          gfx.fillRect(x0 + x * cw, mmTop + y * ch, cw, ch);
-        }
-      }
-    // station footprints
-    for (const station of this.stations) {
-      const hue = this.minimapColor(station.def.id);
-      gfx.fillStyle(hue, 0.72);
-      for (const tile of station.def.tiles) {
-        gfx.fillRect(x0 + tile.x * cw + 1, mmTop + tile.y * ch + 1, cw - 2, ch - 2);
-      }
-    }
-    // objective highlight
-    if (obj) {
-      const st = this.stations.find((s) => s.def.id === obj);
-      if (st) {
-        gfx.fillStyle(0x2ec4b6, 0.55);
-        for (const tile of st.def.tiles) {
-          gfx.fillRect(x0 + tile.x * cw + 1, mmTop + tile.y * ch + 1, cw - 2, ch - 2);
-        }
-        gfx.lineStyle(1, 0x5eead4, 0.85);
-        gfx.strokeRect(x0 + st.def.tiles[0].x * cw, mmTop + st.def.tiles[0].y * ch,
-          (Math.max(...st.def.tiles.map(t=>t.x)) - Math.min(...st.def.tiles.map(t=>t.x)) + 1) * cw,
-          (Math.max(...st.def.tiles.map(t=>t.y)) - Math.min(...st.def.tiles.map(t=>t.y)) + 1) * ch);
-      }
-    }
-    // player dot
-    gfx.fillStyle(0x5eead4, 1);
-    const pd = Math.max(cw * 0.5, 3);
-    gfx.fillRect(x0 + player.x * cw + (cw - pd) / 2, mmTop + player.y * ch + (ch - pd) / 2, pd, pd);
-  }
-
-  private minimapColor(id: StationId): number {
-    switch (id) {
-      case 'receiving': case 'printer': return 0xd9b44a;
-      case 'accession': return 0xffb703;
-      case 'qc': return 0xffb703;
-      case 'centrifuge': case 'aliquot': return 0xffb703;
-      case 'chem': case 'hema': case 'coag': return 0x5cc8e8;
-      case 'cls': return 0xef476f;
-      case 'report': return 0x06d6a0;
-      default: return 0x9fb3c8;
-    }
+  private panTo(station: { tiles: { x: number; y: number }[] }): void {
+    const xs = station.tiles.map(t => t.x);
+    const cx = (Math.min(...xs) + Math.max(...xs) + 1) * TILE / 2;
+    this.cameras.main.pan(cx, this.cameras.main.midPoint.y, 300, 'Sine.easeInOut', true);
   }
 
   // ------------------------------------------------------------------ input
@@ -294,9 +178,6 @@ export class LabScene extends Phaser.Scene {
       } else if (ev.key === 'Escape') {
         ev.preventDefault();
         bus.emit('ui:pause');
-      } else if (ev.key === ' ' || key === 'e') {
-        ev.preventDefault();
-        this.interactNearest();
       }
     };
     window.addEventListener('keydown', this.keyHandler);
@@ -309,119 +190,50 @@ export class LabScene extends Phaser.Scene {
       const tx = Math.floor(world.x / TILE);
       const ty = Math.floor(world.y / TILE);
       if (tx < 0 || ty < 0 || tx >= MAP_COLS || ty >= MAP_ROWS_COUNT) return;
-
       const tapped = stationAt(this.parsed, tx, ty);
-      const adjacentStation = this.parsed.stations.find((s) => s.interactTiles.some((t) => t.x === tx && t.y === ty));
-      const station = tapped ?? adjacentStation;
-      if (station) {
-        this.walkToStation(station.id);
-        return;
+      if (tapped) {
+        bus.emit('station:open', tapped.id);
+        this.movePlayerToStation(tapped.id);
+        this.panTo(tapped);
       }
-      if (!this.parsed.walkable[ty][tx]) return;
-      const goal = new Set([tileKey(tx, ty)]);
-      const path = findPath(this.parsed.walkable, this.player.position(), goal, 200);
-      if (!path) {
-        bus.emit('toast', 'No path to that spot.', 'warn');
-        return;
-      }
-      this.path = path;
-      this.pendingStation = null;
     });
   }
 
-  private walkToStation(id: StationId): void {
-    const station = this.stations.find((s) => s.def.id === id);
-    if (!station) return;
-    const goals = new Set(station.def.interactTiles.map((t) => tileKey(t.x, t.y)));
-    if (goals.has(tileKey(this.player.tileX, this.player.tileY))) {
-      this.path = [];
-      this.pendingStation = null;
-      bus.emit('station:open', id);
-      return;
-    }
-    const path = findPath(this.parsed.walkable, this.player.position(), goals, 200);
-    if (!path) {
-      bus.emit('toast', 'No path to that station.', 'warn');
-      return;
-    }
-    this.path = path;
-    this.pendingStation = id;
-  }
+  // ----------------------------------------------------------------- player
 
-  interactNearest(): void {
-    const station = this.nearestStation();
-    if (!station) {
-      bus.emit('toast', 'Stand next to a station, then press A.', 'warn');
-      return;
-    }
-    bus.emit('station:open', station.def.id);
-  }
-
-  private nearestStation(): Station | null {
-    const p = this.player.position();
-    return (
-      this.stations.find((s) => s.def.interactTiles.some((t) => t.x === p.x && t.y === p.y)) ?? null
-    );
-  }
-
-  private readInput(): { x: number; y: number } | null {
-    const down = (key?: Phaser.Input.Keyboard.Key): boolean => key?.isDown === true;
-    let kx = 0;
-    let ky = 0;
-    if (down(this.cursors?.left) || down(this.wasd?.left)) kx -= 1;
-    if (down(this.cursors?.right) || down(this.wasd?.right)) kx += 1;
-    if (down(this.cursors?.up) || down(this.wasd?.up)) ky -= 1;
-    if (down(this.cursors?.down) || down(this.wasd?.down)) ky += 1;
-    if (kx !== 0 || ky !== 0) {
-      if (kx !== 0 && ky !== 0) return { x: kx, y: 0 };
-      return { x: kx, y: ky };
-    }
-    const { x, y } = this.joy;
-    if (Math.hypot(x, y) < 0.25) return null;
-    return Math.abs(x) > Math.abs(y) ? { x: Math.sign(x), y: 0 } : { x: 0, y: Math.sign(y) };
-  }
-
-  private isBlocked(x: number, y: number): boolean {
-    if (x < 0 || y < 0 || x >= MAP_COLS || y >= MAP_ROWS_COUNT) return true;
-    return !this.parsed.walkable[y][x];
+  private movePlayerToStation(id: StationId): void {
+    const st = this.stations.find(s => s.def.id === id);
+    if (!st) return;
+    // find a walkable tile adjacent to the station footprint
+    const interact = st.def.interactTiles[0];
+    if (!interact) return;
+    const px = interact.x * TILE + TILE / 2;
+    const py = interact.y * TILE + TILE;
+    this.tweens.add({
+      targets: this.player.container,
+      x: px,
+      y: py,
+      duration: 250,
+      ease: 'Sine.InOut',
+      onComplete: () => {
+        this.player.tileX = interact.x;
+        this.player.tileY = interact.y;
+        this.player.container.setDepth(py);
+      },
+    });
+    const facing: 'left' | 'right' = px < this.player.container.x ? 'left' : 'right';
+    this.player.setFacing(facing);
   }
 
   // ----------------------------------------------------------------- update
-
   update(): void {
-    if (!this.player) return;
-    if (this.interactKey && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-      this.interactNearest();
-    }
-    if (this.player.isMoving) return;
-    const dir = this.readInput();
-    if (dir) {
-      this.path = [];
-      this.pendingStation = null;
-      this.player.tryStep(dir.x, dir.y, (x, y) => this.isBlocked(x, y));
-    } else if (this.path.length) {
-      const next = this.path.shift() as { x: number; y: number };
-      const dx = next.x - this.player.tileX;
-      const dy = next.y - this.player.tileY;
-      if (!this.player.tryStep(dx, dy, (x, y) => this.isBlocked(x, y))) {
-        this.path = [];
-        this.pendingStation = null;
-      }
-    } else if (this.pendingStation) {
-      const id = this.pendingStation;
-      this.pendingStation = null;
-      bus.emit('station:open', id);
-    }
-    this.drawMinimap();
     this.updatePrompt();
   }
 
   private updatePrompt(): void {
-    const station = this.nearestStation();
-    const id = station?.def.id ?? null;
-    if (id === this.lastPrompt) return;
-    this.lastPrompt = id;
-    bus.emit('lab:prompt', station ? station.def.label : null);
+    // highlight the station under the pointer? Not needed for tap.
+    void this;
+    void this.lastPrompt;
   }
 
   private setObjectiveStation(id: StationId | null): void {
@@ -439,7 +251,7 @@ export class LabScene extends Phaser.Scene {
     for (const station of this.stations) station.setGlow(false);
   }
 
-  /** Debug API helpers. */
+  /** Search API for debug. */
   get playerTile(): { x: number; y: number } {
     return this.player.position();
   }
@@ -449,6 +261,7 @@ export class LabScene extends Phaser.Scene {
   }
 
   openStation(id: StationId): void {
-    this.walkToStation(id);
+    bus.emit('station:open', id);
+    this.movePlayerToStation(id);
   }
 }
