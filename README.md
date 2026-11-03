@@ -25,6 +25,25 @@ Other scripts:
 
 Landscape is required. Phone target: 844×390. Desktop target: 1280×720 and up.
 
+## Deploy to GitHub Pages
+
+This build is subpath-safe: `vite.config.ts` uses `base: './'`, so it works at `https://<user>.github.io/<repo>/` and at a custom domain root.
+
+1. Push the repository to GitHub (branch `main`).
+2. In **Settings → Pages**, set **Source** to **GitHub Actions**.
+3. The included workflow (`.github/workflows/pages.yml`) runs `npm ci && npm run build` and deploys `dist/` on every push to `main`, or manually via **Run workflow**.
+
+Or build locally and publish `dist/` with any static host:
+
+```bash
+npm run build
+# upload the contents of dist/
+```
+
+`dist/` contains `index.html` and `assets/`; the debug API (`window.__labrush`) is compiled out of production builds and only exists in `npm run dev` / `npm run build:e2e`.
+
+GitHub Pages must serve the app from the repository root URL (`/<repo>/`). No client-side router is used, so no SPA fallback is needed.
+
 ## Controls
 
 | Action | Touch | Keyboard |
