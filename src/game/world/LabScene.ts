@@ -24,6 +24,7 @@ export class LabScene extends Phaser.Scene {
   private minimapGfx?: Phaser.GameObjects.Graphics;
   private lastMmTile = { x: -1, y: -1 };
   private lastMmObjective: StationId | null = null;
+  private cameraPanned = false;
   private unsubscribeEngine?: () => void;
   private unsubs: (() => void)[] = [];
   private keyHandler?: (ev: KeyboardEvent) => void;
@@ -39,6 +40,8 @@ export class LabScene extends Phaser.Scene {
     this.lastPrompt = null;
     this.objectiveStation = null;
     this.parsed = parseMap();
+    this.cameraPanned = false;
+    this.minimapLabel = undefined;
     this.engine = this.registry.get('engine') as ShiftEngine | undefined;
 
     this.cameras.main.setBackgroundColor('#0b1220');
@@ -81,6 +84,17 @@ export class LabScene extends Phaser.Scene {
       this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
       bus.emit('lab:objective', snapshot.objective);
       this.lastMmObjective = null;
+      if (!this.cameraPanned) {
+        this.cameraPanned = true;
+        const stId = snapshot.objective.station;
+        if (stId) {
+          const st = this.stations.find(s => s.def.id === stId);
+          if (st) {
+            const c = st.center();
+            this.cameras.main.pan(c.x, c.y, 900, 'Sine.easeInOut', true);
+          }
+        }
+      }
       bus.emit('lab:snapshot', snapshot);
     }
 
@@ -194,7 +208,21 @@ export class LabScene extends Phaser.Scene {
   private createMinimap(): void {
     if (this.minimapGfx) return;
     this.minimapGfx = this.add.graphics().setScrollFactor(0).setDepth(10001);
+    // tiny "MAP" badge
+    const label = this.add.text(0, 0, 'MAP', { fontFamily: '"Kenney Pixel"', fontSize: '8px', color: '#5eead4', backgroundColor: '#0b1220', padding: { x: 3, y: 1 } })
+      .setResolution(2).setDepth(10001).setScrollFactor(0).setOrigin(0, 1);
+    this.minimapLabel = label;
   }
+
+  private updateMinimapLabel(): void {
+    if (!this.minimapLabel || !this.minimapGfx) return;
+    const w = this.scale.width;
+    const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
+    const mmTop = Math.max(8, (hudRect?.bottom ?? 58) + 6);
+    this.minimapLabel.setPosition(w - 164, mmTop - 2);
+  }
+
+  private minimapLabel?: Phaser.GameObjects.Text;
 
   private drawMinimap(): void {
     const gfx = this.minimapGfx;
@@ -206,7 +234,8 @@ export class LabScene extends Phaser.Scene {
     this.lastMmObjective = obj;
     gfx.clear();
     const w = this.scale.width;
-    const mmW = 130, mmH = 88;
+    const mmW = 156, mmH = 108;
+    this.updateMinimapLabel();
     const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
     const mmTop = Math.max(8, (hudRect?.bottom ?? 58) + 6);
     const x0 = w - mmW - 8;
@@ -214,7 +243,7 @@ export class LabScene extends Phaser.Scene {
     // background
     gfx.fillStyle(0x0b1220, 0.88);
     gfx.fillRect(x0 - 2, (mmTop - 2), mmW + 4, mmH + 4);
-    gfx.lineStyle(1, 0x2b4a6f, 0.65);
+    gfx.lineStyle(2, 0x5eead4, 0.55);
     gfx.strokeRect(x0 - 2, (mmTop - 2), mmW + 4, mmH + 4);
     // walkable / walls
     for (let y = 0; y < MAP_ROWS_COUNT; y++)
