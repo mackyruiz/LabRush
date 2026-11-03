@@ -21,8 +21,9 @@ export class LabScene extends Phaser.Scene {
   private interactKey?: Phaser.Input.Keyboard.Key;
   private lastPrompt: StationId | null = null;
   private objectiveStation: StationId | null = null;
-  private zoneLabels: Phaser.GameObjects.Text[] = [];
-  private npcLabel?: Phaser.GameObjects.Text;
+  private minimapGfx?: Phaser.GameObjects.Graphics;
+  private lastMmTile = { x: -1, y: -1 };
+  private lastMmObjective: StationId | null = null;
   private unsubscribeEngine?: () => void;
   private unsubs: (() => void)[] = [];
   private keyHandler?: (ev: KeyboardEvent) => void;
@@ -38,8 +39,6 @@ export class LabScene extends Phaser.Scene {
     this.lastPrompt = null;
     this.objectiveStation = null;
     this.parsed = parseMap();
-    this.zoneLabels = [];
-    this.npcLabel = undefined;
     this.engine = this.registry.get('engine') as ShiftEngine | undefined;
 
     this.cameras.main.setBackgroundColor('#0b1220');
@@ -76,15 +75,18 @@ export class LabScene extends Phaser.Scene {
       this.unsubscribeEngine = this.engine.subscribe((snapshot) => {
         this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
         bus.emit('lab:objective', snapshot.objective as Objective);
+        this.lastMmObjective = null; // force minimap redraw
       });
       const snapshot = this.engine.getSnapshot();
       this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
       bus.emit('lab:objective', snapshot.objective);
+      this.lastMmObjective = null;
       bus.emit('lab:snapshot', snapshot);
     }
 
     this.scale.on(Phaser.Scale.Events.RESIZE, this.onResize, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown, this);
+    this.drawMinimap();
     this.updatePrompt();
   }
 
@@ -127,10 +129,10 @@ export class LabScene extends Phaser.Scene {
 
   private buildLabels(): void {
     const label = (x: number, y: number, text: string): void => {
-      const node = this.add
+      this.add
         .text(x, y, text, {
           fontFamily: '"Kenney Pixel"',
-          fontSize: '10px',
+          fontSize: '8px',
           color: '#5eead4',
           backgroundColor: '#0b1220',
           padding: { x: 2, y: 1 },
@@ -138,7 +140,7 @@ export class LabScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setResolution(4)
         .setDepth(10000);
-      this.zoneLabels.push(node);
+      // zone label
     };
     label(2 * TILE + TILE, 2 * TILE - 2, 'RECEIVING');
     label(2 * TILE + TILE, 5 * TILE - 6, 'ACCESSION');
@@ -153,10 +155,10 @@ export class LabScene extends Phaser.Scene {
     const x = 5 * TILE + TILE / 2;
     const y = 12 * TILE + TILE;
     this.add.sprite(x, y, 'cls-down').setOrigin(0.5, 1).setDisplaySize(TILE, TILE).setDepth(y);
-    this.npcLabel = this.add
+    this.add
       .text(x, y - TILE - 2, 'Nguyen, CLS', {
         fontFamily: '"Kenney Pixel"',
-        fontSize: '9px',
+        fontSize: '7px',
         color: '#ffd9e2',
         backgroundColor: '#132238',
         padding: { x: 2, y: 1 },
@@ -168,35 +170,99 @@ export class LabScene extends Phaser.Scene {
 
   // ----------------------------------------------------------------- camera
 
-  /** Show the whole lab: every station stays visible on phone and desktop. */
+  /** Standard follow camera: pixels stay sharp so characters are readable. */
   private setupCamera(): void {
-    this.cameras.main.setRoundPixels(true);
-    this.applyCameraMode();
+    const cam = this.cameras.main;
+    cam.setBounds(0, 0, MAP_COLS * TILE, MAP_ROWS_COUNT * TILE);
+    cam.startFollow(this.player.container, true, 0.12, 0.12);
+    cam.setRoundPixels(true);
+    cam.setZoom(this.zoomFor(this.scale.width));
+    this.createMinimap();
   }
 
-  private applyCameraMode(): void {
-    const cam = this.cameras.main;
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const mapW = MAP_COLS * TILE;
-    const mapH = MAP_ROWS_COUNT * TILE;
-    const hud = document.querySelector<HTMLElement>('.hud');
-    const hudHeight = (hud?.offsetHeight ?? 46) + 4;
-    const available = Math.max(160, height - hudHeight);
-    const zoom = Math.min(width / mapW, available / mapH);
-    cam.stopFollow();
-    cam.setZoom(zoom);
-    cam.centerOn(mapW / 2, mapH / 2);
-    // Push the map down so the HUD never covers the top station row.
-    const mapTop = (height - mapH * zoom) / 2;
-    cam.scrollY -= (hudHeight - mapTop) / zoom;
-    const labelSize = Math.max(6, Math.min(14, Math.round((14 / zoom) * 10) / 10));
-    for (const label of this.zoneLabels) label.setFontSize(labelSize);
-    this.npcLabel?.setFontSize(Math.max(6, Math.min(12, Math.round((11 / zoom) * 10) / 10)));
+  private zoomFor(width: number): number {
+    if (width >= 1600) return 4;
+    if (width >= 1280) return 3;
+    return 2;
   }
 
   private onResize(): void {
-    this.applyCameraMode();
+    this.cameras.main.setZoom(this.zoomFor(this.scale.width));
+  }
+
+  /** Bottom-right minimap: the whole 26×18 lab, always visible. */
+  private createMinimap(): void {
+    if (this.minimapGfx) return;
+    this.minimapGfx = this.add.graphics().setScrollFactor(0).setDepth(10001);
+  }
+
+  private drawMinimap(): void {
+    const gfx = this.minimapGfx;
+    if (!gfx) return;
+    const player = this.player.position();
+    const obj = this.objectiveStation;
+    if (this.lastMmTile.x === player.x && this.lastMmTile.y === player.y && this.lastMmObjective === obj) return;
+    this.lastMmTile = { ...player };
+    this.lastMmObjective = obj;
+    gfx.clear();
+    const w = this.scale.width;
+    const mmW = 130, mmH = 88;
+    const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
+    const mmTop = Math.max(8, (hudRect?.bottom ?? 58) + 6);
+    const x0 = w - mmW - 8;
+    const cw = mmW / MAP_COLS, ch = mmH / MAP_ROWS_COUNT;
+    // background
+    gfx.fillStyle(0x0b1220, 0.88);
+    gfx.fillRect(x0 - 2, (mmTop - 2), mmW + 4, mmH + 4);
+    gfx.lineStyle(1, 0x2b4a6f, 0.65);
+    gfx.strokeRect(x0 - 2, (mmTop - 2), mmW + 4, mmH + 4);
+    // walkable / walls
+    for (let y = 0; y < MAP_ROWS_COUNT; y++)
+      for (let x = 0; x < MAP_COLS; x++) {
+        if (!this.parsed.walkable[y][x]) {
+          gfx.fillStyle(0x2b4a6f, 0.22);
+          gfx.fillRect(x0 + x * cw, mmTop + y * ch, cw, ch);
+        }
+      }
+    // station footprints
+    for (const station of this.stations) {
+      const hue = this.minimapColor(station.def.id);
+      gfx.fillStyle(hue, 0.72);
+      for (const tile of station.def.tiles) {
+        gfx.fillRect(x0 + tile.x * cw + 1, mmTop + tile.y * ch + 1, cw - 2, ch - 2);
+      }
+    }
+    // objective highlight
+    if (obj) {
+      const st = this.stations.find((s) => s.def.id === obj);
+      if (st) {
+        gfx.fillStyle(0x2ec4b6, 0.55);
+        for (const tile of st.def.tiles) {
+          gfx.fillRect(x0 + tile.x * cw + 1, mmTop + tile.y * ch + 1, cw - 2, ch - 2);
+        }
+        gfx.lineStyle(1, 0x5eead4, 0.85);
+        gfx.strokeRect(x0 + st.def.tiles[0].x * cw, mmTop + st.def.tiles[0].y * ch,
+          (Math.max(...st.def.tiles.map(t=>t.x)) - Math.min(...st.def.tiles.map(t=>t.x)) + 1) * cw,
+          (Math.max(...st.def.tiles.map(t=>t.y)) - Math.min(...st.def.tiles.map(t=>t.y)) + 1) * ch);
+      }
+    }
+    // player dot
+    gfx.fillStyle(0x5eead4, 1);
+    const pd = Math.max(cw * 0.5, 3);
+    gfx.fillRect(x0 + player.x * cw + (cw - pd) / 2, mmTop + player.y * ch + (ch - pd) / 2, pd, pd);
+  }
+
+  private minimapColor(id: StationId): number {
+    switch (id) {
+      case 'receiving': case 'printer': return 0xd9b44a;
+      case 'accession': return 0xffb703;
+      case 'qc': return 0xffb703;
+      case 'centrifuge': case 'aliquot': return 0xffb703;
+      case 'chem': case 'hema': case 'coag': return 0x5cc8e8;
+      case 'cls': return 0xef476f;
+      case 'report': return 0x06d6a0;
+      default: return 0x9fb3c8;
+    }
   }
 
   // ------------------------------------------------------------------ input
@@ -329,6 +395,7 @@ export class LabScene extends Phaser.Scene {
       this.pendingStation = null;
       bus.emit('station:open', id);
     }
+    this.drawMinimap();
     this.updatePrompt();
   }
 
