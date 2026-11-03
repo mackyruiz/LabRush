@@ -141,6 +141,7 @@ export class LabScene extends Phaser.Scene {
       this.zoneLabels.push(node);
     };
     label(2 * TILE + TILE, 2 * TILE - 2, 'RECEIVING');
+    label(2 * TILE + TILE, 5 * TILE - 6, 'ACCESSION');
     label(10 * TILE + TILE, 2 * TILE - 2, 'QC');
     label(10 * TILE + TILE, 5 * TILE - 2, 'CENTRIFUGE');
     label(17 * TILE + TILE, 5 * TILE - 2, 'ALIQUOT');
