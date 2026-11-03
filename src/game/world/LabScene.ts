@@ -24,7 +24,7 @@ export class LabScene extends Phaser.Scene {
   private minimapGfx?: Phaser.GameObjects.Graphics;
   private lastMmTile = { x: -1, y: -1 };
   private lastMmObjective: StationId | null = null;
-  private cameraPanned = false;
+
   private unsubscribeEngine?: () => void;
   private unsubs: (() => void)[] = [];
   private keyHandler?: (ev: KeyboardEvent) => void;
@@ -40,7 +40,6 @@ export class LabScene extends Phaser.Scene {
     this.lastPrompt = null;
     this.objectiveStation = null;
     this.parsed = parseMap();
-    this.cameraPanned = false;
     this.minimapLabel = undefined;
     this.engine = this.registry.get('engine') as ShiftEngine | undefined;
 
@@ -78,23 +77,14 @@ export class LabScene extends Phaser.Scene {
       this.unsubscribeEngine = this.engine.subscribe((snapshot) => {
         this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
         bus.emit('lab:objective', snapshot.objective as Objective);
-        this.lastMmObjective = null; // force minimap redraw
+        this.lastMmObjective = null;
+        if (snapshot.objective.station) this.panToStation(snapshot.objective.station); // force minimap redraw
       });
       const snapshot = this.engine.getSnapshot();
       this.setObjectiveStation(snapshot.status === 'complete' ? null : snapshot.objective.station);
       bus.emit('lab:objective', snapshot.objective);
       this.lastMmObjective = null;
-      if (!this.cameraPanned) {
-        this.cameraPanned = true;
-        const stId = snapshot.objective.station;
-        if (stId) {
-          const st = this.stations.find(s => s.def.id === stId);
-          if (st) {
-            const c = st.center();
-            this.cameras.main.pan(c.x, c.y, 900, 'Sine.easeInOut', true);
-          }
-        }
-      }
+      if (snapshot.objective.station) this.panToStation(snapshot.objective.station);
       bus.emit('lab:snapshot', snapshot);
     }
 
@@ -202,6 +192,14 @@ export class LabScene extends Phaser.Scene {
 
   private onResize(): void {
     this.cameras.main.setZoom(this.zoomFor(this.scale.width));
+  }
+
+  /** Briefly pan to a station, then let follow take over. */
+  private panToStation(id: StationId): void {
+    const st = this.stations.find(s => s.def.id === id);
+    if (!st) return;
+    const c = st.center();
+    this.cameras.main.pan(c.x, c.y, 900, 'Sine.easeInOut', true);
   }
 
   /** Bottom-right minimap: the whole 26×18 lab, always visible. */
