@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <title>LabRush — Bay 7 Clinical Laboratory</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="ui"></div>
+    <div id="rotate" hidden>
+      <div class="rotate-icon" aria-hidden="true"></div>
+      <p>Rotate to landscape to work the bench.</p>
+    </div>
+    <div id="boot-error" hidden>
+      <div class="boot-error-inner">
+        <h1>LabRush failed to boot</h1>
+        <p id="boot-error-msg">Missing asset.</p>
+        <button id="boot-error-reload" type="button">Reload</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
