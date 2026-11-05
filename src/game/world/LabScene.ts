@@ -107,18 +107,18 @@ export class LabScene extends Phaser.Scene {
         .setResolution(4)
         .setDepth(10000);
     };
-    label(2 * TILE + TILE, 2 * TILE - 2, 'RECEIVING');
-    label(2 * TILE + TILE, 5 * TILE - 6, 'ACCESSION');
-    label(10 * TILE + TILE, 2 * TILE - 2, 'QC');
-    label(10 * TILE + TILE, 5 * TILE - 2, 'CENTRIFUGE');
-    label(17 * TILE + TILE, 5 * TILE - 2, 'ALIQUOT');
-    label(19 * TILE + TILE, 2 * TILE - 2, 'ANALYZERS');
-    label(9 * TILE + TILE, 12 * TILE - 2, 'REPORT');
+    label(2 * TILE + TILE, 1 * TILE - 2, 'RECEIVING');
+    label(2 * TILE + TILE, 3 * TILE - 6, 'ACCESSION');
+    label(10 * TILE + TILE, 1 * TILE - 2, 'QC');
+    label(10 * TILE + TILE, 3 * TILE - 2, 'CENTRIFUGE');
+    label(17 * TILE + TILE, 3 * TILE - 2, 'ALIQUOT');
+    label(19 * TILE + TILE, 1 * TILE - 2, 'ANALYZERS');
+    label(9 * TILE + TILE, 8 * TILE - 2, 'REPORT');
   }
 
   private buildNpc(): void {
     const x = 5 * TILE + TILE / 2;
-    const y = 12 * TILE + TILE;
+    const y = 8 * TILE + TILE;
     this.add.sprite(x, y, 'cls-down').setOrigin(0.5, 1).setDisplaySize(TILE, TILE).setDepth(y);
     this.add
       .text(x, y - TILE - 2, 'Nguyen, CLS', {

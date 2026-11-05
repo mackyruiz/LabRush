@@ -2,26 +2,21 @@ import type { StationId } from '../types';
 
 export const TILE = 16;
 export const MAP_COLS = 26;
-export const MAP_ROWS_COUNT = 18;
-export const SPAWN = { x: 13, y: 16 };
+export const MAP_ROWS_COUNT = 13;
+export const SPAWN = { x: 13, y: 11 };
 
-/** The lab, verbatim. Every row is 26 characters. */
+/** The lab, compacted for portrait/landscape fit. Every row is 26 characters. */
 export const MAP_ROWS = [
   '##########################',
-  '#........................#',
   '#.RRR....QQQ....KKK..HHH.#',
   '#.R.R....Q.Q....K.K..H.H.#',
-  '#........................#',
   '#.AAA....CCC....LLL..GGG.#',
   '#.A.A....C.C....L.L..G.G.#',
-  '#........................#',
   '#..~~~~~~....~~~~~~......#',
   '#..~....~....~....~......#',
   '#..~~~~~~....~~~~~~......#',
-  '#........................#',
   '#.SSS...PPP....XXX..FFF..#',
   '#.S.S...P.P....X.X..F.F..#',
-  '#........................#',
   '#..p....MMM.....B....e...#',
   '#........................#',
   '#############+############',

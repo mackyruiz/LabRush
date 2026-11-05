@@ -12,7 +12,7 @@ export class TitleScene extends Phaser.Scene {
     if (!this.textures.exists('tiles-image')) return;
 
     const cols = 26;
-    const rows = 18;
+    const rows = 13;
     const data: number[][] = [];
     for (let y = 0; y < rows; y++) {
       const row: number[] = [];
