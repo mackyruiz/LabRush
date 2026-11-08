@@ -22,7 +22,7 @@ const config: Phaser.Types.Core.GameConfig = {
   backgroundColor: '#0b1220',
   pixelArt: true,
   roundPixels: true,
-  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.NO_CENTER },
   input: { activePointers: 2 },
   scene: [BootScene, TitleScene, LabScene, AssetTestScene, QcScene, AccessionScene, CentrifugeScene, PipetteScene],
 };

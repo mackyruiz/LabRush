@@ -169,8 +169,4 @@ export function parseMap(): ParsedMap {
   return { walkable, kinds, stations, mats };
 }
 
-export function stationAt(parsed: ParsedMap, x: number, y: number): StationDef | null {
-  return parsed.stations.find((s) => s.tiles.some((t) => t.x === x && t.y === y)) ?? null;
-}
-
 export const STATION_NAMES = STATION_LABELS;

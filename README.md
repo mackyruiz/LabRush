@@ -23,7 +23,7 @@ Other scripts:
 | `npm run e2e` | Playwright full-shift test (builds and previews automatically) |
 | `npm run fetch-assets` | re-download the selected Kenney CC0 files |
 
-Landscape is required. Phone target: 844×390. Desktop target: 1280×720 and up.
+Portrait is the design target: a 360×640 logical stage that scales to fit, letterboxed inside a centered 9:16 column (`--col-w: 480px`, `--col-h: 980px` in `src/style.css`). Phone target: 390×844 — any portrait phone or narrow window works down to 360 CSS px wide. On a wide desktop window the column stays phone-sized and centered on a dark surround; there is no rotate-to-landscape interstitial.
 
 ## Deploy to GitHub Pages
 

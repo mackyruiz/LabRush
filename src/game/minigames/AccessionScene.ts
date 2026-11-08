@@ -52,6 +52,11 @@ export class AccessionScene extends MinigameScene {
     this.dragging = false;
   };
 
+  /** Canvas-space point -> stage-local point; the stage container is scaled and centered. */
+  private stageLocal(x: number, y: number): { x: number; y: number } {
+    return { x: (x - this.stage.x) / this.stageScale, y: (y - this.stage.y) / this.stageScale };
+  }
+
   private specimen(): OrderView['specimens'][number] | null {
     return this.order?.specimens[this.index] ?? null;
   }
@@ -59,17 +64,17 @@ export class AccessionScene extends MinigameScene {
   private render(): void {
     this.stage.removeAll(true);
     if (!this.order) {
-      this.text(-340, -180, 'ACCESSION', 20, '#5eead4', '"Kenney Pixel"');
-      this.text(-340, -120, 'Receive a sample first.', 15, '#ffd9e1');
+      this.text(-164, -306, 'ACCESSION', 18, '#5eead4', '"Kenney Pixel"');
+      this.text(-164, -282, 'Receive a sample first.', 13, '#ffd9e1');
       return;
     }
-    this.panel(-360, -202, 720, 405, 0x0b1220, 1);
-    this.text(-340, -190, 'ACCESSION', 20, '#5eead4', '"Kenney Pixel"');
+    this.panel(-180, -320, 360, 640, 0x0b1220, 1);
+    this.text(-164, -306, 'ACCESSION', 18, '#5eead4', '"Kenney Pixel"');
     this.text(
-      300,
-      -188,
+      100,
+      -304,
       `TUBE ${Math.min(this.index + 1, this.order.specimens.length)} / ${this.order.specimens.length}`,
-      12,
+      11,
       '#9fb3c8',
       '"Kenney Pixel"',
       'center',
@@ -84,22 +89,22 @@ export class AccessionScene extends MinigameScene {
   private renderScan(): void {
     const specimen = this.specimen();
     if (!specimen) return;
-    this.text(-340, -160, `${this.order?.patient.name} · ${TESTS[specimen.test].name}`, 14, '#e6f1ff');
-    const hint = this.text(-340, -138, 'Drag the tube onto the scanner, or tap the tube then the scanner.', 11, '#9fb3c8');
-    hint.setWordWrapWidth(360);
+    this.text(-164, -282, `${this.order?.patient.name} · ${TESTS[specimen.test].name}`, 12, '#e6f1ff').setWordWrapWidth(328);
+    const hint = this.text(-164, -262, 'Drag the tube onto the scanner, or tap the tube then the scanner.', 10, '#9fb3c8');
+    hint.setWordWrapWidth(328);
 
-    const scannerX = -20;
-    const scannerY = -40;
-    const scanner = this.add.rectangle(scannerX, scannerY, 120, 170, 0x0e1a2b, 1).setStrokeStyle(2, 0x2ec4b6);
+    const scannerX = 0;
+    const scannerY = -140;
+    const scanner = this.add.rectangle(scannerX, scannerY, 130, 180, 0x0e1a2b, 1).setStrokeStyle(2, 0x2ec4b6);
     scanner.setInteractive({ useHandCursor: true });
     this.stage.add(scanner);
-    const beam = this.add.rectangle(scannerX, scannerY, 96, 6, 0x2ec4b6, 0.6);
+    const beam = this.add.rectangle(scannerX, scannerY, 104, 6, 0x2ec4b6, 0.6);
     this.stage.add(beam);
     this.tweens.add({ targets: beam, y: scannerY + 60, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     this.text(scannerX, scannerY + 96, 'SCANNER', 10, '#5eead4', '"Kenney Pixel"', 'center');
 
-    const tubeX = -260;
-    const tubeY = -40;
+    const tubeX = 0;
+    const tubeY = 88;
     const tube = this.drawTube(0, 0, specimen.tube, 54, 128);
     const cap = this.add.rectangle(0, -64, 54, 14, 0xe6f1ff, 1).setStrokeStyle(1, 0x0b1220);
     const label = this.add.rectangle(0, 14, 40, 52, 0xffffff, 0.92);
@@ -111,9 +116,17 @@ export class AccessionScene extends MinigameScene {
     this.input.setDraggable(container);
     this.stage.add(container);
     const home = { x: tubeX, y: tubeY };
-    container.on('drag', (_p: Phaser.Input.Pointer, x: number, y: number) => {
+    let grabX = 0;
+    let grabY = 0;
+    container.on('dragstart', (pointer: Phaser.Input.Pointer) => {
+      const p = this.stageLocal(pointer.x, pointer.y);
+      grabX = container.x - p.x;
+      grabY = container.y - p.y;
+    });
+    container.on('drag', (pointer: Phaser.Input.Pointer) => {
       this.dragging = true;
-      container.setPosition(x, y);
+      const p = this.stageLocal(pointer.x, pointer.y);
+      container.setPosition(p.x + grabX, p.y + grabY);
     });
     container.on('dragend', () => {
       const near = Math.hypot(container.x - scannerX, container.y - scannerY) < 110;
@@ -134,7 +147,7 @@ export class AccessionScene extends MinigameScene {
     });
 
     this.text(tubeX, tubeY + 84, `${TESTS[specimen.test].tube.replaceAll('_', ' ')} · ${specimen.fillMl.toFixed(1)} mL`, 10, '#9fb3c8', '"Kenney Pixel"', 'center');
-    this.text(-340, 150, 'Two identifiers. Never relabel a tube.', 12, '#ffb703');
+    this.text(-164, 220, 'Two identifiers. Never relabel a tube.', 11, '#ffb703').setWordWrapWidth(328);
   }
 
   private tintSelected(container: Phaser.GameObjects.Container): void {
@@ -157,64 +170,64 @@ export class AccessionScene extends MinigameScene {
     if (!specimen || !this.order) return;
     const patient = this.order.patient;
     const mismatch = specimen.label.dob !== patient.dob;
-    const card = (x: number, title: string, rows: [string, string][], highlight: boolean): void => {
-      this.panel(x, -150, 300, 190, 0x132238, 1);
-      this.text(x + 12, -140, title, 12, '#5eead4', '"Kenney Pixel"');
+    const card = (x: number, y: number, title: string, rows: [string, string][], highlight: boolean): void => {
+      this.panel(x, y, 344, 112, 0x132238, 1);
+      this.text(x + 12, y + 10, title, 11, '#5eead4', '"Kenney Pixel"');
       rows.forEach(([k, v], i) => {
         const bad = highlight && k === 'DOB' && mismatch && this.checked;
-        this.text(x + 12, -114 + i * 30, k.toUpperCase(), 9, '#9fb3c8', '"Kenney Pixel"');
-        this.text(x + 90, -116 + i * 30, v, 14, bad ? '#ef476f' : '#e6f1ff');
+        this.text(x + 12, y + 34 + i * 26, k.toUpperCase(), 9, '#9fb3c8', '"Kenney Pixel"');
+        this.text(x + 96, y + 32 + i * 26, v, 13, bad ? '#ef476f' : '#e6f1ff');
         if (bad) {
-          const line = this.add.rectangle(x + 90, -98 + i * 30, 150, 2, 0xef476f, 1).setOrigin(0, 0.5);
+          const line = this.add.rectangle(x + 96, y + 47 + i * 26, 150, 2, 0xef476f, 1).setOrigin(0, 0.5);
           this.stage.add(line);
         }
       });
     };
-    card(-340, 'REQUISITION', [
+    card(-172, -250, 'REQUISITION', [
       ['Name', patient.name],
       ['DOB', patient.dob],
       ['MRN', patient.mrn],
     ], false);
-    card(40, 'TUBE LABEL', [
+    card(-172, -130, 'TUBE LABEL', [
       ['Name', specimen.label.name],
       ['DOB', specimen.label.dob],
       ['MRN', specimen.label.mrn],
     ], true);
 
-    this.text(-340, 46, `Tube: ${TESTS[specimen.test].tube.replaceAll('_', ' ')}   Fill: ${specimen.fillMl.toFixed(1)} mL   Min: ${TESTS[specimen.test].minFillMl.toFixed(1)} mL`, 12, '#e6f1ff');
+    this.text(-164, -2, `Tube: ${TESTS[specimen.test].tube.replaceAll('_', ' ')}   Fill: ${specimen.fillMl.toFixed(1)} mL   Min: ${TESTS[specimen.test].minFillMl.toFixed(1)} mL`, 11, '#e6f1ff').setWordWrapWidth(328);
     if (this.checked) {
       this.text(
-        -340,
-        66,
+        -164,
+        18,
         mismatch ? 'DOB does not match the requisition.' : 'Identifiers and fill volume match.',
         12,
         mismatch ? '#ef476f' : '#06d6a0',
-      );
+      ).setWordWrapWidth(328);
     }
-
-    this.button(-340, 108, 150, 34, 'Check identifiers', () => {
-      this.checked = true;
-      this.sfx('click');
-      this.render();
-    }, 'ghost');
 
     if (this.phase === 'reject') {
       REASONS.forEach((r, i) => {
-        this.button(-150 + i * 150, 108, 140, 34, r.label, () => this.decide(false, r.reason), 'danger');
+        this.button(0, 74 + i * 52, 320, 44, r.label, () => this.decide(false, r.reason), 'danger');
       });
-      this.button(300, 108, 110, 34, 'Cancel', () => {
+      this.button(0, 240, 320, 44, 'Cancel', () => {
         this.phase = 'verify';
         this.render();
       }, 'ghost');
       return;
     }
 
-    this.button(-160, 108, 120, 34, 'Accept', () => this.decide(true), 'primary');
-    this.button(-20, 108, 120, 34, 'Reject', () => {
+    this.button(0, 74, 320, 44, 'Check identifiers', () => {
+      this.checked = true;
+      this.sfx('click');
+      this.render();
+    }, 'ghost');
+
+    this.button(-82, 134, 160, 52, 'Accept', () => this.decide(true), 'primary');
+    this.button(82, 134, 160, 52, 'Reject', () => {
       this.phase = 'reject';
       this.render();
     }, 'danger');
-    this.text(-340, 152, 'Rejecting a valid, correctly labeled tube costs integrity.', 11, '#9fb3c8');
+    this.text(-164, 200, 'Rejecting a valid, correctly labeled tube costs integrity.', 11, '#9fb3c8').setWordWrapWidth(328);
   }
 
   private decide(accepted: boolean, reason?: RejectReason): void {
@@ -239,31 +252,31 @@ export class AccessionScene extends MinigameScene {
       this.finish({ decisions: this.decisions });
       return;
     }
-    this.text(-340, -160, 'Order of draw', 18, '#5eead4', '"Kenney Pixel"');
-    this.text(-340, -132, 'Tap the tubes in the order they should be drawn.', 13, '#9fb3c8');
+    this.text(-164, -262, 'Order of draw', 14, '#5eead4', '"Kenney Pixel"');
+    this.text(-164, -240, 'Tap the tubes in the order they should be drawn.', 10, '#9fb3c8').setWordWrapWidth(328);
     const tubeTest = new Map<TubeType, string>();
     for (const spec of this.order.specimens) tubeTest.set(spec.tube, TESTS[spec.test].tube);
     tubes.forEach((tube, i) => {
-      const x = -250 + i * 190;
-      this.button(x, -40, 160, 90, '', () => {
+      const y = -160 + i * 96;
+      this.button(0, y, 320, 84, '', () => {
         if (this.drawOrder.includes(tube)) return;
         this.drawOrder.push(tube);
         this.sfx('click');
         this.render();
       }, 'ghost');
       const color = tubeColor(tube);
-      const tubeShape = this.add.rectangle(x, -46, 34, 66, color, 1).setStrokeStyle(2, 0xe6f1ff);
+      const tubeShape = this.add.rectangle(-128, y, 26, 56, color, 1).setStrokeStyle(2, 0xe6f1ff);
       this.stage.add(tubeShape);
-      this.text(x, 8, (tubeTest.get(tube) ?? tube).replaceAll('_', ' '), 9, '#e6f1ff', '"Kenney Pixel"', 'center');
+      this.text(-104, y - 12, (tubeTest.get(tube) ?? tube).replaceAll('_', ' '), 10, '#e6f1ff', '"Kenney Pixel"');
       const picked = this.drawOrder.indexOf(tube);
-      if (picked >= 0) this.text(x, 24, `#${picked + 1}`, 14, '#ffb703', '"Kenney Pixel"', 'center');
+      if (picked >= 0) this.text(-104, y + 10, `#${picked + 1}`, 14, '#ffb703', '"Kenney Pixel"');
     });
-    this.text(-340, 44, this.drawOrder.length ? `Selected: ${this.drawOrder.map((t) => t.replaceAll('_', ' ')).join(' → ')}` : 'Nothing selected yet.', 12, '#e6f1ff');
-    this.button(-340, 100, 150, 36, 'Undo', () => {
+    this.text(-164, 96, this.drawOrder.length ? `Selected: ${this.drawOrder.map((t) => t.replaceAll('_', ' ')).join(' → ')}` : 'Nothing selected yet.', 11, '#e6f1ff').setWordWrapWidth(328);
+    this.button(-82, 160, 160, 52, 'Undo', () => {
       this.drawOrder.pop();
       this.render();
     }, 'ghost');
-    this.button(-170, 100, 160, 36, 'Confirm order', () => this.confirmOrder(), 'primary');
+    this.button(82, 160, 160, 52, 'Confirm order', () => this.confirmOrder(), 'primary');
   }
 
   private confirmOrder(): void {

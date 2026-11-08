@@ -13,6 +13,7 @@ const PERFECT = 25;
 const ACCEPT = 50;
 const MAX_VOLUME = 1000;
 const RATE = 250; // µL per second
+const GAUGE = { x: 90, top: -240, h: 260 };
 
 export class PipetteScene extends MinigameScene {
   private test: TestCode | null = null;
@@ -68,73 +69,72 @@ export class PipetteScene extends MinigameScene {
 
   private render(): void {
     this.stage.removeAll(true);
-    this.panel(-360, -202, 720, 405, 0x0b1220, 1);
-    this.text(-340, -190, 'ALIQUOT', 20, '#5eead4', '"Kenney Pixel"');
-    this.text(-340, -164, `Pipette 500 µL ${this.fluid} into a sample cup`, 13, '#9fb3c8');
+    this.panel(-180, -320, 360, 640, 0x0b1220, 1);
+    this.text(-164, -306, 'ALIQUOT', 18, '#5eead4', '"Kenney Pixel"');
+    this.text(-164, -282, `Pipette ${TARGET} µL ${this.fluid} into a sample cup`, 11, '#9fb3c8').setWordWrapWidth(328);
 
     // source tube
-    const tubeX = -260;
-    const tubeY = -30;
+    const tubeX = -122;
+    const tubeY = -150;
     const tube = this.add.rectangle(tubeX, tubeY, 48, 120, 0xdfe9f5, 0.9).setStrokeStyle(2, 0xffffff);
     const tubeLiquid = this.add.rectangle(tubeX, tubeY + 18, 40, 78, this.fluidColor(), 1);
     this.stage.add([tube, tubeLiquid]);
-    this.text(tubeX, tubeY + 76, 'SOURCE', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
+    this.text(tubeX, tubeY + 66, 'SOURCE', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
 
     // pipette
-    const pipette = this.add.container(-20, -40);
+    const pipetteX = -16;
+    const pipette = this.add.container(pipetteX, -160);
     const body = this.add.rectangle(0, 0, 18, 150, 0xcfe8e6, 0.95).setStrokeStyle(2, 0xffffff);
     const tip = this.add.triangle(0, 84, -8, 0, 8, 0, 0, 18, 0xcfe8e6, 1);
     const plunger = this.add.rectangle(0, -84, 26, 14, 0x2b4a6f, 1).setStrokeStyle(2, 0x9fb3c8);
     this.liquid = this.add.rectangle(0, 0, 12, 1, this.fluidColor(), 1);
     pipette.add([body, tip, plunger, this.liquid]);
-    pipette.setSize(60, 180);
+    pipette.setSize(96, 190);
     pipette.setInteractive({ useHandCursor: true });
     pipette.on('pointerdown', () => this.startHold());
     this.stage.add(pipette);
-    this.text(-20, 62, 'PIPETTE', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
+    this.text(pipetteX, -58, 'PIPETTE', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
 
     // gauge
-    const gaugeX = 90;
-    const gaugeTop = -110;
-    const gaugeH = 200;
-    const gauge = this.add.rectangle(gaugeX, gaugeTop, 34, gaugeH, 0x0e1a2b, 1).setOrigin(0.5, 0).setStrokeStyle(2, 0x2b4a6f);
+    const gauge = this.add.rectangle(GAUGE.x, GAUGE.top, 34, GAUGE.h, 0x0e1a2b, 1).setOrigin(0.5, 0).setStrokeStyle(2, 0x2b4a6f);
     this.stage.add(gauge);
-    const bandH = ((ACCEPT * 2) / MAX_VOLUME) * gaugeH;
-    const band = this.add.rectangle(gaugeX, gaugeTop + gaugeH - (TARGET / MAX_VOLUME) * gaugeH - bandH / 2, 30, bandH, 0x06d6a0, 0.25);
+    const bandH = ((ACCEPT * 2) / MAX_VOLUME) * GAUGE.h;
+    const band = this.add.rectangle(GAUGE.x, GAUGE.top + GAUGE.h - (TARGET / MAX_VOLUME) * GAUGE.h - bandH / 2, 30, bandH, 0x06d6a0, 0.25);
     this.stage.add(band);
-    this.gaugeFill = this.add.rectangle(gaugeX, gaugeTop + gaugeH - 1, 28, 0, 0x2ec4b6, 0.85).setOrigin(0.5, 1);
+    this.gaugeFill = this.add.rectangle(GAUGE.x, GAUGE.top + GAUGE.h - 1, 28, 0, 0x2ec4b6, 0.85).setOrigin(0.5, 1);
     this.stage.add(this.gaugeFill);
-    this.text(gaugeX, gaugeTop - 18, 'µL', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
-    this.text(gaugeX, gaugeTop + gaugeH + 6, '0', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
-    this.text(gaugeX, gaugeTop - 6, '1000', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
-    this.volumeText = this.text(gaugeX + 40, gaugeTop + 70, `${Math.round(this.volume)} µL`, 14, '#e6f1ff', '"Kenney Pixel"');
-    this.text(gaugeX + 40, gaugeTop + 94, 'target 500 ±25', 10, '#06d6a0', '"Kenney Pixel"');
+    this.text(GAUGE.x, GAUGE.top - 20, 'µL', 10, '#9fb3c8', '"Kenney Pixel"', 'center');
+    this.text(GAUGE.x, GAUGE.top + GAUGE.h + 6, '0', 10, '#9fb3c8', '"Kenney Pixel"', 'center');
+    this.text(GAUGE.x, GAUGE.top - 6, `${MAX_VOLUME}`, 9, '#9fb3c8', '"Kenney Pixel"', 'center');
+    this.volumeText = this.text(174, -210, `${Math.round(this.volume)} µL`, 15, '#e6f1ff', '"Kenney Pixel"', 'right');
+    this.text(174, -188, `target ${TARGET} ±${ACCEPT}`, 9, '#06d6a0', '"Kenney Pixel"', 'right');
 
     // cup
-    const cup = this.add.rectangle(250, -20, 72, 92, 0xcfe8e6, 0.35).setStrokeStyle(2, 0x9fe8e1);
+    const cup = this.add.rectangle(142, -100, 64, 84, 0xcfe8e6, 0.35).setStrokeStyle(2, 0x9fe8e1);
     this.stage.add(cup);
-    this.text(250, 34, 'SAMPLE CUP', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
+    this.text(142, -52, 'SAMPLE CUP', 9, '#9fb3c8', '"Kenney Pixel"', 'center');
+
+    this.text(0, 48, 'Hold to fill, release at target.', 11, '#9fb3c8', '"Kenney Mini Square"', 'center');
 
     // controls
-    const aspirate = this.button(-250, 150, 170, 48, 'Aspirate (hold)', () => undefined, 'primary');
+    const aspirate = this.button(0, 110, 320, 72, 'Aspirate (hold)', () => undefined, 'primary');
     aspirate.on('pointerdown', () => this.startHold());
     aspirate.on('pointerup', () => this.stopHold());
     aspirate.on('pointerout', () => this.stopHold());
-    const dispense = this.button(-50, 150, 150, 48, 'Dispense', () => this.dispense(), 'amber');
+    const dispense = this.button(-82, 196, 160, 52, 'Dispense', () => this.dispense(), 'amber');
     if (this.volume <= 0) dispense.setAlpha(0.5);
     if (this.busy) {
       aspirate.disableInteractive();
       dispense.disableInteractive();
     }
-    const reset = this.button(140, 150, 110, 48, 'Reset', () => {
+    this.button(82, 196, 160, 52, 'Reset', () => {
       if (this.busy) return;
       this.volume = 0;
       this.updateLiquid();
       this.render();
     }, 'ghost');
-    void reset;
 
-    this.text(-340, 178, `Attempts: ${this.attempts} · retry as needed; the first overflow is free`, 10, '#9fb3c8');
+    this.text(0, 254, `Attempts: ${this.attempts} · retry as needed; the first overflow is free`, 10, '#9fb3c8', '"Kenney Mini Square"', 'center');
     this.updateLiquid();
   }
 
@@ -154,7 +154,7 @@ export class PipetteScene extends MinigameScene {
       this.liquid.y = 74 - h / 2;
     }
     if (this.gaugeFill) {
-      this.gaugeFill.height = (this.volume / MAX_VOLUME) * 200;
+      this.gaugeFill.height = (this.volume / MAX_VOLUME) * GAUGE.h;
       this.gaugeFill.setOrigin(0.5, 1);
     }
     if (this.volumeText) {

@@ -18,6 +18,7 @@ import type {
   TestStateView,
 } from '../types';
 import { STATION_NAMES } from '../world/map';
+import type { LabScene } from '../world/LabScene';
 import { button, clear, el, link } from './dom';
 
 export type UIScreen = 'title' | 'intro' | 'lab' | 'scorecard';
@@ -28,7 +29,7 @@ export interface ModalOptions {
   body: HTMLElement;
   footer?: HTMLElement[];
   dismissible?: boolean;
-  narrow?: boolean;
+  id?: string;
   onClose?: () => void;
 }
 
@@ -38,17 +39,15 @@ export interface ModalHandle {
 }
 
 interface LabDom {
-  hud: HTMLElement;
+  topbar: HTMLElement;
   tag: HTMLElement;
   objectiveStation: HTMLElement;
   objectiveText: HTMLElement;
   chips: Record<'acc' | 'tat' | 'int', HTMLElement>;
   orderCard: HTMLElement;
   tray: HTMLElement;
-  prompt: HTMLElement;
-  joystick: HTMLElement;
-  knob: HTMLElement;
-  interactLabel: HTMLElement;
+  rail: HTMLElement;
+  dockGo: HTMLButtonElement;
 }
 
 interface MinigameContext {
@@ -125,6 +124,7 @@ export class UIRoot {
   private uiPaused = false;
   private tatTimer: number | null = null;
   private hudSignature = '';
+  private dockStation: StationId = 'receiving';
   private activeMinigame: MinigameContext | null = null;
   private mgChrome: HTMLElement | null = null;
   private criticalPulse: HTMLElement;
@@ -160,7 +160,6 @@ export class UIRoot {
     bus.on('toast', (message: string, tone: ToastTone) => this.toast(message, tone));
     bus.on('ui:journal', () => this.openJournal());
     bus.on('ui:pause', () => this.openPause());
-    bus.on('lab:prompt', (label: string | null) => this.setPrompt(label));
     bus.on('lab:objective', (objective: Objective) => this.setObjective(objective));
     bus.on('minigame:complete', (payload: { key: string; result: unknown }) => this.completeMinigame(payload));
     bus.on('minigame:exit', (payload: { key: string }) => this.exitMinigame(payload.key));
@@ -206,27 +205,49 @@ export class UIRoot {
     const wrap = el('div', 'title-screen');
     wrap.style.pointerEvents = 'auto';
     const panel = el('div', 'title-panel');
-    const logo = el('h1', 'logo', 'LabRush');
-    const sub = el('p', 'subtitle', 'Bay 7 Clinical Laboratory · Sacramento, CA');
-    const start = button('Start Shift', 'btn-primary', () => this.showIntro());
-    const row = el('div', 'btn-row');
-    row.style.justifyContent = 'center';
-    const journalBtn = button('Journal', 'btn-ghost', () => this.openJournal());
-    const settings = button('Settings', 'btn-ghost', () => this.openSettings());
-    row.append(start, journalBtn, settings);
-
-    panel.append(logo, sub, row);
-    const best = this.save.get().best;
-    if (best) {
-      panel.append(el('div', 'best-line', `BEST SHIFT: ${best.grade} · ${best.overall.toFixed(0)}/100`));
-    }
     panel.append(
+      el('h1', 'logo', 'LabRush'),
+      el('p', 'tagline', 'Three orders. One shift.'),
+      el('p', 'subtitle', 'Bay 7 Clinical Laboratory · Sacramento, CA'),
+    );
+
+    const actions = el('div', 'title-actions');
+    actions.append(button('Start Shift', 'btn-primary', () => this.showIntro()));
+    const secondary = el('div', 'title-secondary');
+    secondary.append(
+      button('Journal', 'btn-ghost', () => this.openJournal()),
+      button('Settings', 'btn-ghost', () => this.openSettings()),
+    );
+    actions.append(secondary);
+    panel.append(actions);
+
+    const best = this.save.get().best;
+    const details = el('div', 'title-details hidden');
+    if (best) {
+      details.append(
+        el('div', 'best-line', `BEST SHIFT · ${best.grade} · ${best.overall.toFixed(0)}/100`),
+        el(
+          'div',
+          'best-line',
+          `ACC ${Math.round(best.accuracy)} · TAT ${Math.round(best.tat)} · INT ${Math.round(best.integrity)}`,
+        ),
+      );
+    }
+    details.append(
       el(
         'p',
         'disclaimer',
         'Educational simulation. Reference intervals and critical limits are teaching values; laboratory-validated intervals always prevail.',
       ),
     );
+    const disclose = button(
+      best ? 'BEST SHIFT' : 'ABOUT THIS SIMULATION',
+      'title-disclose',
+      () => disclose.setAttribute('aria-expanded', String(!details.classList.toggle('hidden'))),
+    );
+    disclose.setAttribute('aria-expanded', 'false');
+    disclose.append(el('span', 'caret', '▾'));
+    panel.append(disclose, details);
     wrap.append(panel);
     this.screenHost.append(wrap);
   }
@@ -244,7 +265,7 @@ export class UIRoot {
     const c2 = el('div', 'intro-card');
     c2.append(
       el('h3', undefined, 'Move and interact'),
-      el('p', undefined, 'Drag the joystick or tap the floor. Tap a glowing station, or stand next to it and hit A. The objective chip is always right.'),
+      el('p', undefined, 'Tap a glowing station on the map: the avatar walks over and the panel opens. GO at the bottom walks you to the next one. The objective chip is always right.'),
     );
     const c3 = el('div', 'intro-card');
     c3.append(
@@ -261,8 +282,12 @@ export class UIRoot {
 
   showLab(): void {
     this.setScreen('lab');
-    const hud = el('div', 'hud');
+    const screen = el('div', 'lab-screen');
+
+    const topbar = el('header', 'topbar');
     const tag = el('div', 'shift-tag', 'SHIFT 01 · 07:00');
+    const row = el('div', 'topbar-row');
+
     const chip = el('div', 'objective-chip');
     chip.tabIndex = 0;
     chip.setAttribute('role', 'button');
@@ -272,7 +297,6 @@ export class UIRoot {
     const objectiveText = el('div', 'objective-text', 'Loading shift…');
     chip.append(objectiveStation, objectiveText);
 
-    const right = el('div', 'hud-right');
     const metricChip = (label: string, icon: string): { wrap: HTMLElement; value: HTMLElement } => {
       const c = el('div', 'chip');
       c.setAttribute('aria-label', label);
@@ -283,45 +307,59 @@ export class UIRoot {
     const acc = metricChip('ACCURACY', 'A');
     const tat = metricChip('TAT', 'T');
     const integrity = metricChip('INTEGRITY', 'I');
+    const chips = el('div', 'hud-chips');
+    chips.append(acc.wrap, tat.wrap, integrity.wrap);
     const journal = button('J', 'btn-icon', () => this.openJournal(), { ariaLabel: 'Open journal' });
     const pause = button('II', 'btn-icon', () => this.openPause(), { ariaLabel: 'Pause shift' });
-    right.append(acc.wrap, tat.wrap, integrity.wrap, journal, pause);
-    hud.append(tag, chip, right);
+    const actions = el('div', 'hud-actions');
+    actions.append(journal, pause);
+    row.append(tag, chips, actions);
+    topbar.append(row, chip);
 
-    const orderCard = el('div', 'order-card hidden');
+    // The Phaser camera viewport is pinned to this spacer; see LabScene.applyCameraMode.
+    const boardSlot = el('div');
+    boardSlot.id = 'board-slot';
+
+    const rail = el('div', 'order-rail hidden');
+    const orderCard = el('div');
     const tray = el('div', 'tray');
+    rail.append(orderCard, tray);
 
-    this.screenHost.append(hud, orderCard, tray);
+    const dock = el('footer', 'dock');
+    const dockGo = button('GO · BAY 7', 'btn-primary dock-go', () => this.walkToDockStation());
+    dock.append(dockGo);
+
+    screen.append(topbar, boardSlot, rail, dock);
+    this.screenHost.append(screen);
     this.lab = {
-      hud,
+      topbar,
       tag,
       objectiveStation,
       objectiveText,
       chips: { acc: acc.value, tat: tat.value, int: integrity.value },
       orderCard,
       tray,
-      prompt: document.createElement('div'),
-      joystick: document.createElement('div'),
-      knob: document.createElement('div'),
-      interactLabel: document.createElement('div'),
+      rail,
+      dockGo,
     };
-    this.setPrompt(null);
-    this.screenHost.style.setProperty('--hud-h', `${hud.offsetHeight || 46}px`);
     this.onSnapshot(this.engine.getSnapshot());
     this.tatTimer = window.setInterval(() => this.updateTat(), 500);
   }
 
-  private setPrompt(label: string | null): void {
-    if (!this.lab) return;
-    this.lab.prompt.classList.toggle('hidden', !label);
-    if (label) this.lab.prompt.textContent = `A  USE ${label}`;
-    this.lab.interactLabel.textContent = label ?? 'STATION';
+  /** Walk the avatar to the objective's station, then open it — same path as a board tap. */
+  private walkToDockStation(): void {
+    const lab = this.game.scene.getScene('LabScene') as LabScene | null;
+    if (lab && this.game.scene.isActive('LabScene')) lab.openStation(this.dockStation);
+    else this.openStation(this.dockStation);
   }
 
   private setObjective(objective: Objective): void {
     if (!this.lab) return;
-    this.lab.objectiveStation.textContent = STATION_NAMES[objective.station] ?? 'BAY 7';
+    const station = STATION_NAMES[objective.station] ?? 'BAY 7';
+    this.lab.objectiveStation.textContent = station;
     this.lab.objectiveText.textContent = objective.text;
+    this.lab.dockGo.textContent = `GO · ${station}`;
+    this.dockStation = objective.station;
   }
 
   // -------------------------------------------------------------- HUD data
@@ -333,6 +371,7 @@ export class UIRoot {
     }
     if (!this.lab) return;
     this.setObjective(snapshot.objective);
+    this.lab.dockGo.disabled = snapshot.status === 'complete';
     const { metrics } = snapshot;
     this.lab.chips.acc.textContent = String(Math.round(metrics.accuracy));
     this.lab.chips.int.textContent = String(Math.round(metrics.integrity));
@@ -366,7 +405,7 @@ export class UIRoot {
   private renderOrder(order: OrderView | null): void {
     if (!this.lab) return;
     if (!order) {
-      this.lab.orderCard.classList.add('hidden');
+      this.lab.rail.classList.add('hidden');
       clear(this.lab.tray);
       this.hudSignature = '';
       return;
@@ -381,21 +420,15 @@ export class UIRoot {
     if (signature === this.hudSignature) return;
     this.hudSignature = signature;
 
-    this.lab.orderCard.classList.remove('hidden');
+    this.lab.rail.classList.remove('hidden');
     clear(this.lab.orderCard);
     const top = el('div', 'order-card-top');
     const name = el('div', 'order-name', order.patient.name);
     const badge = el('span', `badge ${order.priority.toLowerCase()}`, order.priority);
     top.append(name, badge);
-    const meta = el(
-      'div',
-      'order-meta',
-      `${order.patient.age}${order.patient.sex} · MRN ${order.patient.mrn}\n${order.patient.location}`,
-    );
-    meta.style.whiteSpace = 'pre-line';
     const tests = el('div', 'order-tests');
     for (const t of order.tests) tests.append(el('span', 'test-pill', TEST_LABEL[t]));
-    this.lab.orderCard.append(top, meta, tests);
+    this.lab.orderCard.append(top, tests);
 
     clear(this.lab.tray);
     for (const specimen of specimens) {
@@ -438,11 +471,7 @@ export class UIRoot {
       at: new Date().toISOString(),
     });
 
-    const wrap = el('div', 'scorecard-screen');
-    wrap.id = 'scorecard';
-    wrap.style.pointerEvents = 'auto';
     const card = el('div', 'scorecard');
-    card.append(el('h1', 'modal-title', 'SHIFT REPORT · BAY 7'));
 
     const hero = el('div', 'score-hero');
     const gradeEl = el('div', 'grade', grade);
@@ -544,15 +573,17 @@ export class UIRoot {
     });
     card.append(quizWrap);
 
-    const actions = el('div', 'btn-row');
-    actions.append(
-      button('Replay shift', 'btn-primary', () => this.onRestartShift?.()),
-      button('Journal', 'btn-ghost', () => this.openJournal()),
-      button('Title', 'btn-ghost', () => this.onQuitToTitle?.()),
-    );
-    card.append(actions);
-    wrap.append(card);
-    this.screenHost.append(wrap);
+    this.openModal({
+      id: 'scorecard',
+      title: 'SHIFT REPORT · BAY 7',
+      body: card,
+      dismissible: false,
+      footer: [
+        button('Replay shift', 'btn-primary', () => this.onRestartShift?.()),
+        button('Journal', 'btn-ghost', () => this.openJournal()),
+        button('Title', 'btn-ghost', () => this.onQuitToTitle?.()),
+      ],
+    });
   }
 
   // -------------------------------------------------------------- stations
@@ -920,15 +951,8 @@ export class UIRoot {
     const tableWrap = el('div', 'table-wrap');
     const table = el('table', 'result-table');
     const head = el('tr');
-    for (const [label, cls] of [
-      ['ANALYTE', ''],
-      ['RESULT', ''],
-      ['UNITS', 'col-unit'],
-      ['REFERENCE', ''],
-      ['FLAG', ''],
-    ] as [string, string][]) {
-      const th = el('th', cls || undefined, label);
-      head.append(th);
+    for (const label of ['ANALYTE', 'RESULT', 'REFERENCE', 'FLAG']) {
+      head.append(el('th', undefined, label));
     }
     table.append(head);
     for (const analyte of def.analytes) {
@@ -938,8 +962,7 @@ export class UIRoot {
       const ref = refFor(analyte, order.patient.sex);
       const tr = el('tr', flag === 'C' ? 'critical' : undefined);
       tr.append(el('td', undefined, analyte.name));
-      tr.append(el('td', undefined, String(value)));
-      tr.append(el('td', 'col-unit', analyte.unit));
+      tr.append(el('td', undefined, `${value} ${analyte.unit}`));
       tr.append(el('td', undefined, `${ref.low}–${ref.high}`));
       const flagCell = el('td');
       if (flag) flagCell.append(el('span', `flag ${flag}`, flag === 'C' ? 'CRITICAL' : flag));
@@ -1117,7 +1140,6 @@ export class UIRoot {
     const handle = this.openModal({
       title: `CALL PROVIDER · ${TEST_LABEL[test]}`,
       body,
-      narrow: true,
       footer: [button('Cancel call', 'btn-ghost', () => this.closeAllModals())],
     });
   }
@@ -1554,7 +1576,6 @@ export class UIRoot {
     this.openModal({
       title,
       body,
-      narrow: true,
       footer: [
         button('Cancel', 'btn-ghost', () => this.closeAllModals()),
         button('Confirm', 'btn-danger', () => {
@@ -1585,7 +1606,8 @@ export class UIRoot {
     const backdrop = el('div', 'modal-backdrop');
     backdrop.style.pointerEvents = 'auto';
     backdrop.dataset.modalId = String(id);
-    const modal = el('div', opts.narrow ? 'modal narrow' : 'modal');
+    const modal = el('div', 'modal');
+    if (opts.id) modal.id = opts.id;
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-label', opts.title);
@@ -1610,8 +1632,11 @@ export class UIRoot {
     backdrop.addEventListener('pointerdown', (ev) => {
       if (ev.target === backdrop && dismissible) this.closeModal(id);
     });
-    const first = modal.querySelector<HTMLElement>('button:not([disabled]), a[href], input, select, textarea');
-    window.setTimeout(() => first?.focus(), 0);
+    const first = Array.from(
+      modal.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input, select, textarea'),
+    ).find((n) => n.offsetParent !== null);
+    body.scrollTop = 0;
+    window.setTimeout(() => first?.focus({ preventScroll: true }), 0);
     return { root: backdrop, close: () => this.closeModal(id) };
   }
 
@@ -1625,7 +1650,7 @@ export class UIRoot {
     const top = this.modalStack[this.modalStack.length - 1];
     if (top) {
       const focusable = top.node.querySelector<HTMLElement>('button:not([disabled]), a[href], input');
-      focusable?.focus();
+      focusable?.focus({ preventScroll: true });
     }
   }
 

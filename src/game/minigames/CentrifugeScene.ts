@@ -13,7 +13,7 @@ interface Payload {
 type TubeId = 'sample' | 'balance';
 
 const SLOT_COUNT = 12;
-const ROTOR = { x: 0, y: -40, radius: 88 };
+const ROTOR = { x: 0, y: -120, radius: 78 };
 
 export class CentrifugeScene extends MinigameScene {
   private test: TestCode | null = null;
@@ -44,11 +44,11 @@ export class CentrifugeScene extends MinigameScene {
 
   private render(): void {
     this.stage.removeAll(true);
-    this.panel(-360, -202, 720, 405, 0x0b1220, 1);
-    this.text(-340, -190, 'CENTRIFUGE', 20, '#5eead4', '"Kenney Pixel"');
-    this.text(-340, -164, `Sample: ${this.tube.replaceAll('_', ' ')} · required 3,000 rpm × ${this.requiredMinutes} min`, 12, '#9fb3c8');
+    this.panel(-180, -320, 360, 640, 0x0b1220, 1);
+    this.text(-164, -306, 'CENTRIFUGE', 18, '#5eead4', '"Kenney Pixel"');
+    this.text(-164, -282, `Sample: ${this.tube.replaceAll('_', ' ')} · required 3,000 rpm × ${this.requiredMinutes} min`, 10, '#9fb3c8').setWordWrapWidth(328);
     if (!this.test) {
-      this.text(-340, -100, 'Nothing to spin.', 15, '#ffd9e1');
+      this.text(-164, -240, 'Nothing to spin.', 15, '#ffd9e1');
       return;
     }
 
@@ -56,14 +56,14 @@ export class CentrifugeScene extends MinigameScene {
     this.stage.add(rotor);
     const ring = this.add.circle(0, 0, ROTOR.radius + 24, 0x0e1a2b, 1).setStrokeStyle(3, 0x2b4a6f);
     rotor.add(ring);
-    const inner = this.add.circle(0, 0, 26, 0x132238, 1).setStrokeStyle(2, 0x2b4a6f);
+    const inner = this.add.circle(0, 0, 24, 0x132238, 1).setStrokeStyle(2, 0x2b4a6f);
     rotor.add(inner);
     for (let i = 0; i < SLOT_COUNT; i++) {
       const angle = (i / SLOT_COUNT) * Math.PI * 2 - Math.PI / 2;
       const x = Math.cos(angle) * ROTOR.radius;
       const y = Math.sin(angle) * ROTOR.radius;
       const slot = this.add.circle(x, y, 17, 0x132238, 1).setStrokeStyle(2, 0x2b4a6f);
-      slot.setInteractive({ useHandCursor: true });
+      slot.setInteractive(new Phaser.Geom.Circle(0, 0, 26), Phaser.Geom.Circle.Contains);
       slot.on('pointerdown', () => this.tapSlot(i));
       rotor.add(slot);
       const occupant = this.placement.get(i);
@@ -71,29 +71,43 @@ export class CentrifugeScene extends MinigameScene {
         const tubeObj = this.tubeGraphic(x, y, occupant);
         rotor.add(tubeObj);
       }
-      this.text(x, y + 24, String(i + 1), 8, '#9fb3c8', '"Kenney Pixel"', 'center');
+      this.text(
+        ROTOR.x + Math.cos(angle) * (ROTOR.radius + 30),
+        ROTOR.y + Math.sin(angle) * (ROTOR.radius + 30) - 5,
+        String(i + 1),
+        8,
+        '#9fb3c8',
+        '"Kenney Pixel"',
+        'center',
+      );
     }
 
-    // tray
-    this.text(-340, 104, 'TRAY', 11, '#9fb3c8', '"Kenney Pixel"');
-    this.text(-340, 50, 'PRESET', 11, '#9fb3c8', '"Kenney Pixel"');
+    if (this.spinning) {
+      this.text(0, ROTOR.y - 8, 'SPINNING', 14, '#ffb703', '"Kenney Pixel"', 'center');
+    } else if (this.selected) {
+      this.text(0, 2, `Selected: ${this.selected.toUpperCase()} — tap a slot`, 11, '#ffb703', '"Kenney Mini Square"', 'center').setWordWrapWidth(328);
+    } else {
+      this.text(0, 2, 'Tap a tube, then a slot.', 11, '#9fb3c8', '"Kenney Mini Square"', 'center');
+    }
+
     const sampleInSlot = [...this.placement.entries()].some(([, id]) => id === 'sample');
     const balanceInSlot = [...this.placement.entries()].some(([, id]) => id === 'balance');
+    this.text(-164, 26, 'TRAY', 11, '#9fb3c8', '"Kenney Pixel"');
     if (!sampleInSlot) {
-      this.trayTube(-250, 138, 'sample');
-      this.text(-250, 168, 'SAMPLE', 9, '#5eead4', '"Kenney Pixel"', 'center');
+      this.trayTube(-120, 72, 'sample');
+      this.text(-120, 106, 'SAMPLE', 9, '#5eead4', '"Kenney Pixel"', 'center');
     }
     if (!balanceInSlot) {
-      this.trayTube(-320, 138, 'balance');
-      this.text(-320, 168, 'BALANCE', 9, '#5eead4', '"Kenney Pixel"', 'center');
+      this.trayTube(-30, 72, 'balance');
+      this.text(-30, 106, 'BALANCE', 9, '#5eead4', '"Kenney Pixel"', 'center');
+    }
+    if (sampleInSlot && balanceInSlot) {
+      this.text(-164, 66, 'Both tubes loaded.\nTap a loaded slot to pull it back.', 10, '#9fb3c8').setWordWrapWidth(328);
     }
 
-    if (this.selected) {
-      this.text(-150, 112, `Selected: ${this.selected.toUpperCase()} — tap a slot`, 12, '#ffb703');
-    } else {
-      this.text(-150, 112, 'Tap tube, then slot.', 12, '#9fb3c8');
-    }
+    this.text(0, 132, 'Opposite slots keep the rotor balanced.', 10, '#9fb3c8', '"Kenney Pixel"', 'center');
 
+    this.text(-164, 152, 'PRESET', 11, '#9fb3c8', '"Kenney Pixel"');
     const presets: { rpm: number; minutes: number; label: string }[] = [
       { rpm: 3000, minutes: 10, label: '3,000 × 10' },
       { rpm: 3000, minutes: 15, label: '3,000 × 15' },
@@ -102,7 +116,9 @@ export class CentrifugeScene extends MinigameScene {
     ];
     presets.forEach((preset, i) => {
       const active = preset.rpm === this.rpm && preset.minutes === this.minutes;
-      this.button(-255 + i * 150, 82, 135, 30, preset.label, () => {
+      const x = i % 2 === 0 ? -84 : 84;
+      const y = i < 2 ? 186 : 240;
+      this.button(x, y, 160, 44, preset.label, () => {
         if (this.spinning) return;
         this.rpm = preset.rpm;
         this.minutes = preset.minutes;
@@ -110,8 +126,8 @@ export class CentrifugeScene extends MinigameScene {
       }, active ? 'primary' : 'ghost');
     });
 
-    this.button(170, 138, 170, 42, this.spinning ? 'Spinning…' : 'Start spin', () => this.startSpin(), this.spinning ? 'ghost' : 'primary');
-    this.text(-340, 186, 'Opposite slots keep the rotor balanced.', 11, '#9fb3c8');
+    const start = this.button(0, 292, 320, 52, this.spinning ? 'Spinning…' : 'Start spin', () => this.startSpin(), this.spinning ? 'ghost' : 'primary');
+    if (this.spinning) start.disableInteractive();
 
     if (this.spinning) {
       this.tweens.add({
@@ -121,12 +137,12 @@ export class CentrifugeScene extends MinigameScene {
         ease: 'Cubic.InOut',
         onComplete: () => this.finishSpin(),
       });
-      this.text(0, 58, 'SPINNING', 16, '#ffb703', '"Kenney Pixel"', 'center');
     }
   }
 
   private trayTube(x: number, y: number, id: TubeId): void {
     const g = this.tubeGraphic(x, y, id);
+    g.setSize(64, 80);
     g.setInteractive({ useHandCursor: true });
     g.on('pointerdown', () => {
       this.selected = id;
@@ -135,7 +151,7 @@ export class CentrifugeScene extends MinigameScene {
     });
     this.stage.add(g);
     if (this.selected === id) {
-      const halo = this.add.circle(x, y, 26, 0x2ec4b6, 0.22).setStrokeStyle(2, 0x2ec4b6);
+      const halo = this.add.circle(x, y, 30, 0x2ec4b6, 0.22).setStrokeStyle(2, 0x2ec4b6);
       this.stage.add(halo);
     }
   }

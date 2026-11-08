@@ -2,12 +2,12 @@ import Phaser from 'phaser';
 import { bus } from '../bus';
 import type { ShiftEngine } from '../state/ShiftEngine';
 
-export const STAGE_W = 720;
-export const STAGE_H = 405;
+export const STAGE_W = 360;
+export const STAGE_H = 640;
 
 export type BannerTone = 'perfect' | 'good' | 'oops';
 
-/** Shared 720x405 logical stage for every minigame. */
+/** Shared 360x640 portrait logical stage for every minigame. */
 export class MinigameScene extends Phaser.Scene {
   protected stage!: Phaser.GameObjects.Container;
   protected stageScale = 1;
@@ -58,12 +58,13 @@ export class MinigameScene extends Phaser.Scene {
     size = 15,
     color = '#e6f1ff',
     family = '"Kenney Mini Square"',
-    align: 'left' | 'center' = 'left',
+    align: 'left' | 'center' | 'right' = 'left',
   ): Phaser.GameObjects.Text {
     const t = this.add
       .text(x, y, value, { fontFamily: family, fontSize: `${size}px`, color, align })
       .setResolution(2);
     if (align === 'center') t.setOrigin(0.5, 0);
+    else if (align === 'right') t.setOrigin(1, 0);
     this.stage.add(t);
     return t;
   }
@@ -113,12 +114,12 @@ export class MinigameScene extends Phaser.Scene {
     const t = this.add
       .text(0, -30, message, {
         fontFamily: '"Kenney Pixel"',
-        fontSize: '22px',
+        fontSize: '18px',
         color,
         backgroundColor: '#0b1220',
-        padding: { x: 14, y: 10 },
+        padding: { x: 12, y: 8 },
         align: 'center',
-        wordWrap: { width: 600 },
+        wordWrap: { width: 300 },
       })
       .setOrigin(0.5)
       .setResolution(2)

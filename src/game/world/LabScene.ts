@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { bus } from '../bus';
 import type { ShiftEngine } from '../state/ShiftEngine';
 import type { Objective, StationId } from '../types';
-import { MAP_COLS, MAP_ROWS_COUNT, SPAWN, TILE, parseMap, stationAt, type ParsedMap } from './map';
+import { MAP_COLS, MAP_ROWS_COUNT, SPAWN, TILE, parseMap, type ParsedMap, type StationDef } from './map';
 import { Player } from './Player';
 import { Station } from './Station';
 
@@ -15,7 +15,7 @@ export class LabScene extends Phaser.Scene {
   private unsubscribeEngine?: () => void;
   private unsubs: (() => void)[] = [];
   private keyHandler?: (ev: KeyboardEvent) => void;
-  private lastPrompt: StationId | null = null;
+  private boardObserver?: ResizeObserver;
 
   constructor() {
     super('LabScene');
@@ -23,7 +23,6 @@ export class LabScene extends Phaser.Scene {
 
   create(): void {
     this.objectiveStation = null;
-    this.lastPrompt = null;
     this.parsed = parseMap();
     this.engine = this.registry.get('engine') as ShiftEngine | undefined;
 
@@ -139,31 +138,37 @@ export class LabScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setRoundPixels(true);
     this.applyCameraMode();
+    const slot = document.getElementById('board-slot');
+    if (slot && typeof ResizeObserver !== 'undefined') {
+      this.boardObserver = new ResizeObserver(() => this.applyCameraMode());
+      this.boardObserver.observe(slot);
+    }
   }
 
+  /**
+   * Fit the whole 26x13 lab into the DOM `#board-slot` row of the lab grid.
+   * CSS px are converted to canvas px because the canvas is DPI-scaled.
+   */
   private applyCameraMode(): void {
     const cam = this.cameras.main;
-    const width = this.scale.width;
+    const canvas = this.game.canvas.getBoundingClientRect();
+    const slot = document.getElementById('board-slot')?.getBoundingClientRect();
+    const sx = canvas.width ? this.scale.width / canvas.width : 1;
+    const sy = canvas.height ? this.scale.height / canvas.height : 1;
+    const r =
+      slot && slot.width > 8 && slot.height > 8
+        ? { x: (slot.left - canvas.left) * sx, y: (slot.top - canvas.top) * sy, w: slot.width * sx, h: slot.height * sy }
+        : { x: 0, y: 0, w: this.scale.width, h: this.scale.height };
+    cam.setViewport(r.x, r.y, r.w, r.h);
     const mapW = MAP_COLS * TILE;
-    const zoom = width < 900 ? Math.max(0.85, Math.min(1.2, width / mapW)) : Math.min(width / mapW, 2.5);
+    const mapH = MAP_ROWS_COUNT * TILE;
+    const zoom = Math.min(r.w / mapW, r.h / mapH);
     cam.setZoom(zoom);
-    const hudRect = document.querySelector('.hud')?.getBoundingClientRect();
-    const hudBottom = hudRect?.bottom ?? 56;
-    const mapH = MAP_ROWS_COUNT * TILE * zoom;
-    const available = this.scale.height - hudBottom - 10;
-    const top = hudBottom + Math.max(0, (available - mapH) / 2);
-    const xOffset = (width - mapW * zoom) / 2;
-    cam.setScroll(-xOffset / zoom, -top / zoom);
+    cam.setScroll((mapW - r.w / zoom) / 2, (mapH - r.h / zoom) / 2);
   }
 
   private onResize(): void {
     this.applyCameraMode();
-  }
-
-  private panTo(station: { tiles: { x: number; y: number }[] }): void {
-    const xs = station.tiles.map(t => t.x);
-    const cx = (Math.min(...xs) + Math.max(...xs) + 1) * TILE / 2;
-    this.cameras.main.pan(cx, this.cameras.main.midPoint.y, 300, 'Sine.easeInOut', true);
   }
 
   // ------------------------------------------------------------------ input
@@ -186,17 +191,40 @@ export class LabScene extends Phaser.Scene {
   private setupPointer(): void {
     this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
       const cam = this.cameras.main;
-      const world = cam.getWorldPoint(pointer.x, pointer.y);
-      const tx = Math.floor(world.x / TILE);
-      const ty = Math.floor(world.y / TILE);
-      if (tx < 0 || ty < 0 || tx >= MAP_COLS || ty >= MAP_ROWS_COUNT) return;
-      const tapped = stationAt(this.parsed, tx, ty);
+      if (pointer.x < cam.x || pointer.y < cam.y || pointer.x > cam.x + cam.width || pointer.y > cam.y + cam.height) return;
+      const wx = (pointer.x - cam.x) / cam.zoom + cam.scrollX;
+      const wy = (pointer.y - cam.y) / cam.zoom + cam.scrollY;
+      const tapped = this.stationNear(Math.floor(wx / TILE), Math.floor(wy / TILE));
       if (tapped) {
         bus.emit('station:open', tapped.id);
         this.movePlayerToStation(tapped.id);
-        this.panTo(tapped);
       }
     });
+  }
+
+  /**
+   * At the zoom a 390px column gives (390/416 ~ 0.94) a 2x2-tile station is only
+   * ~30 CSS px wide. Grow the footprint by one tile on every side, which makes
+   * every station ~60 CSS px, and return the nearest one when regions overlap.
+   */
+  private stationNear(tx: number, ty: number): StationDef | null {
+    let best: StationDef | null = null;
+    let bestDist = Infinity;
+    for (const s of this.parsed.stations) {
+      const xs = s.tiles.map((t) => t.x);
+      const ys = s.tiles.map((t) => t.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      if (tx < minX - 1 || tx > maxX + 1 || ty < minY - 1 || ty > maxY + 1) continue;
+      const d = (tx - (minX + maxX) / 2) ** 2 + (ty - (minY + maxY) / 2) ** 2;
+      if (d < bestDist) {
+        bestDist = d;
+        best = s;
+      }
+    }
+    return best;
   }
 
   // ----------------------------------------------------------------- player
@@ -225,17 +253,6 @@ export class LabScene extends Phaser.Scene {
     this.player.setFacing(facing);
   }
 
-  // ----------------------------------------------------------------- update
-  update(): void {
-    this.updatePrompt();
-  }
-
-  private updatePrompt(): void {
-    // highlight the station under the pointer? Not needed for tap.
-    void this;
-    void this.lastPrompt;
-  }
-
   private setObjectiveStation(id: StationId | null): void {
     if (id === this.objectiveStation) return;
     this.objectiveStation = id;
@@ -247,6 +264,8 @@ export class LabScene extends Phaser.Scene {
     for (const off of this.unsubs) off();
     this.unsubs = [];
     this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize, this);
+    this.boardObserver?.disconnect();
+    this.boardObserver = undefined;
     if (this.keyHandler) window.removeEventListener('keydown', this.keyHandler);
     for (const station of this.stations) station.setGlow(false);
   }
